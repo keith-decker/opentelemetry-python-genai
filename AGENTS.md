@@ -1,9 +1,10 @@
-# OpenTelemetry Python Contrib
+# OpenTelemetry Python GenAI
 
 This file is here to steer AI assisted PRs towards being high quality and valuable contributions
 that do not create excessive maintainer burden.
 
-Monorepo with 50+ OpenTelemetry instrumentation packages for Python.
+Monorepo with OpenTelemetry instrumentation packages for Generative AI client libraries, frameworks
+and the shared `opentelemetry-util-genai` utilities.
 
 ## General Rules and Guidelines
 
@@ -25,7 +26,6 @@ comment for users on issue or pull request threads on their behalf as it is agai
 
 ## PR description
 
-Follow the repo's [PR template](.github/pull_request_template.md) and fill applicable sections.
 Keep description short and focus on what is being changed and any gaps or concerns.
 
 AI-generated analyses, long reports, or design dumps go in a relevant issue or a separate PR
@@ -33,15 +33,12 @@ comment - not in the PR description.
 
 ## Structure
 
-- `instrumentation/` - instrumentation packages (Flask, Django, FastAPI, gRPC, databases, etc.)
-- `instrumentation-genai/` - GenAI instrumentations (Anthropic, Vertex AI, LangChain, etc.)
-- `util/` - shared utilities (`util-http`, `util-genai`)
-- `exporter/` - custom exporters
-- `propagator/` - context propagators
+- `instrumentation/` - GenAI instrumentation packages
+- `util/opentelemetry-util-genai/` - shared GenAI utilities
 
 Instrumentation packages live under `src/opentelemetry/instrumentation/{name}/` with their own
-`pyproject.toml` and `tests/`. Other package types follow the equivalent layout under their own
-namespace (e.g. `src/opentelemetry/util/{name}/`, `src/opentelemetry/exporter/{name}/`).
+`pyproject.toml` and `tests/`. The util package follows the equivalent layout under
+`src/opentelemetry/util/genai/`.
 
 ## Commands
 
@@ -52,8 +49,8 @@ uv sync --frozen --all-packages
 # Lint (runs ruff via pre-commit)
 uv run pre-commit run ruff --all-files
 
-# Test a specific package (append -0, -1, etc. for version variants)
-uv run tox -e py312-test-instrumentation-flask-0
+# Test a specific package (append -oldest, -latest for version variants)
+uv run tox -e py312-test-instrumentation-openai-v2-oldest
 
 # Type check
 uv run tox -e typecheck
@@ -73,7 +70,7 @@ uv run tox -e typecheck
 
 ## Instrumentation rules
 
-Apply to packages under `instrumentation/` and `instrumentation-genai/`.
+Apply to packages under `instrumentation/`.
 
 ### Exception handling
 

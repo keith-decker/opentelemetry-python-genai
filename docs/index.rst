@@ -1,8 +1,8 @@
-OpenTelemetry-Python-Contrib
-============================
+OpenTelemetry-Python-GenAI
+==========================
 
-Complimentary instrumentation and vendor-specific packages for use with the
-Python `OpenTelemetry <https://opentelemetry.io/>`_ client.
+OpenTelemetry instrumentation and shared utilities for Generative AI client
+libraries in Python.
 
 .. image:: https://img.shields.io/badge/slack-chat-green.svg
    :target: https://cloud-native.slack.com/archives/C01PD4HUVBL
@@ -15,25 +15,16 @@ generally be used in production environments.
 Installation
 ------------
 
-There are several complimentary packages available on PyPI which can be
-installed separately via pip:
+GenAI instrumentation packages are available on PyPI and can be installed
+separately via pip:
 
 .. code-block:: sh
 
-    pip install opentelemetry-exporter-{exporter}
     pip install opentelemetry-instrumentation-{instrumentation}
-    pip install opentelemetry-sdk-extension-{sdk-extension}
 
-A complete list of packages can be found at the
-`Contrib repo instrumentation <https://github.com/open-telemetry/opentelemetry-python-contrib/tree/main/instrumentation>`_
-and `Contrib repo exporter <https://github.com/open-telemetry/opentelemetry-python-contrib/tree/main/exporter>`_ directories.
-
-Extensions
-----------
-
-Visit `OpenTelemetry Registry <https://opentelemetry.io/registry/?s=python>`_ to
-find a lot of related projects like exporters, instrumentation libraries, tracer
-implementations, resource, etc.
+A complete list of packages can be found in the
+`opentelemetry-python-genai instrumentation <https://github.com/open-telemetry/opentelemetry-python-genai/tree/main/instrumentation>`_
+directory.
 
 Installing Cutting Edge Packages
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -46,70 +37,20 @@ install <https://pip.pypa.io/en/stable/reference/pip_install/#editable-installs>
 
 .. code-block:: sh
 
-    git clone https://github.com/open-telemetry/opentelemetry-python-contrib.git
-    cd opentelemetry-python-contrib
-    pip install -e ./instrumentation/opentelemetry-instrumentation-flask
-    pip install -e ./instrumentation/opentelemetry-instrumentation-botocore
-    pip install -e ./instrumentation-genai/opentelemetry-instrumentation-openai-v2
-    pip install -e ./sdk-extension/opentelemetry-sdk-extension-aws
-    pip install -e ./resource/opentelemetry-resource-detector-containerid
+    git clone https://github.com/open-telemetry/opentelemetry-python-genai.git
+    cd opentelemetry-python-genai
+    pip install -e ./util/opentelemetry-util-genai
+    pip install -e ./instrumentation/opentelemetry-instrumentation-openai-v2
+    pip install -e ./instrumentation/opentelemetry-instrumentation-anthropic
 
 
 .. toctree::
     :maxdepth: 2
-    :caption: OpenTelemetry Instrumentations
-    :name: Instrumentations
+    :caption: OpenTelemetry GenAI Instrumentations
+    :name: GenAI Instrumentations
     :glob:
 
     instrumentation/**
-
-.. toctree::
-    :maxdepth: 2
-    :caption: OpenTelemetry Generative AI Instrumentations
-    :name: Generative AI Instrumentations
-    :glob:
-
-    instrumentation-genai/**
-
-.. toctree::
-    :maxdepth: 2
-    :caption: OpenTelemetry Propagators
-    :name: Propagators
-    :glob:
-
-    propagator/**
-
-.. toctree::
-    :maxdepth: 2
-    :caption: OpenTelemetry Performance
-    :name: Performance
-    :glob:
-
-    performance/**
-
-.. toctree::
-    :maxdepth: 2
-    :caption: OpenTelemetry SDK Extensions
-    :name: SDK Extensions
-    :glob:
-
-    sdk-extension/**
-
-.. toctree::
-    :maxdepth: 2
-    :caption: OpenTelemetry Resource Detectors
-    :name: Resource Detectors
-    :glob:
-
-    resource/**
-
-.. toctree::
-    :maxdepth: 2
-    :caption: OpAMP
-    :name: OpAMP
-    :glob:
-
-    opamp/**
 
 Indices and tables
 ------------------

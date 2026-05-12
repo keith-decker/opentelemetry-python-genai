@@ -22,13 +22,14 @@
 # file. In particular, please see:
 #
 #   openai_agents-latest: {[testenv]test_deps}
-#   openai_agents-latest: -r {toxinidir}/instrumentation-genai/opentelemetry-instrumentation-openai-agents-v2/tests/requirements.latest.txt
+#   openai_agents-latest: -r {toxinidir}/instrumentation/opentelemetry-instrumentation-openai-agents-v2/tests/requirements.latest.txt
 #
 # This provides additional dependencies, namely:
 #
 #   opentelemetry-api
 #   opentelemetry-sdk
 #   opentelemetry-semantic-conventions
+#   opentelemetry-instrumentation
 #
 # ... with a "dev" version based on the latest distribution.
 
@@ -45,10 +46,9 @@ packaging==24.0
 pytest==7.4.4
 pytest-asyncio==0.21.0
 wrapt==1.16.0
-# test with the latest version of opentelemetry-api, sdk, and semantic conventions
+# test with the latest version of opentelemetry-api, sdk, semantic conventions, and instrumentation
 grpcio>=1.60.0; implementation_name != "pypy"
 grpcio<1.60.0; implementation_name == "pypy"
 
--e opentelemetry-instrumentation
 -e util/opentelemetry-util-genai
--e instrumentation-genai/opentelemetry-instrumentation-openai-agents-v2
+-e instrumentation/opentelemetry-instrumentation-openai-agents-v2

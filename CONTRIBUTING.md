@@ -1,490 +1,114 @@
-# Contributing to opentelemetry-python-contrib
+# Contributing
 
-The Python special interest group (SIG) meets regularly. See the OpenTelemetry
-[community](https://github.com/open-telemetry/community#python-sdk) repo for
-information on this and other language SIGs.
+Welcome to the OpenTelemetry Python GenAI Instrumentations repository!
 
-See the [public meeting notes](https://docs.google.com/document/d/18w8zOBm_mbety0OqlPwxc7dvnfu641EgmrO4AdJef0U/edit?tab=t.0)
-for a summary description of past meetings. To request edit access, join the
-meeting or get in touch on [Slack](https://cloud-native.slack.com/archives/C01PD4HUVBL).
+New to OpenTelemetry? Read the
+[New Contributor Guide](https://github.com/open-telemetry/community/blob/main/guides/contributor/README.md)
+first — it covers the CLA, Code of Conduct, and other prerequisites.
 
-See the [community membership document](https://github.com/open-telemetry/community/blob/main/community-membership.md)
-on how to become a [**Member**](https://github.com/open-telemetry/community/blob/main/community-membership.md#member),
-[**Approver**](https://github.com/open-telemetry/community/blob/main/community-membership.md#approver)
-and [**Maintainer**](https://github.com/open-telemetry/community/blob/main/community-membership.md#maintainer).
+If you are using AI agents to assist with contributions, please also read
+[AGENTS.md](AGENTS.md) for guidance on how to use them responsibly in this
+project.
 
-Before you can contribute, you will need to sign the [Contributor License Agreement](https://docs.linuxfoundation.org/lfx/easycla/contributors).
+## Prerequisites
 
-Please also read the [OpenTelemetry Contributor Guide](https://github.com/open-telemetry/community/blob/main/guides/contributor/README.md).
+- [Python](https://www.python.org/downloads/) — see [`tox.ini`](tox.ini) for
+  the supported versions.
+- [`uv`](https://docs.astral.sh/uv/getting-started/installation/) — used to
+  manage the workspace and to back the `tox` test environments.
 
-If you are using AI agents to assist with contributions, please read [AGENTS.md](AGENTS.md) for guidance on how to use them responsibly in this project.
+## Code structure
 
-## Index
+```
+├── instrumentation/
+│   └── opentelemetry-instrumentation-<name>/  # one package per GenAI library
+│       ├── src/opentelemetry/instrumentation/<name>/
+│       ├── tests/
+│       └── pyproject.toml
+└── util/
+    └── opentelemetry-util-genai/              # shared GenAI utilities
+        ├── src/opentelemetry/util/genai/
+        ├── tests/
+        └── pyproject.toml
+```
 
-- [Contributing to opentelemetry-python-contrib](#contributing-to-opentelemetry-python-contrib)
-  - [Index](#index)
-  - [Find a Buddy and get Started Quickly](#find-a-buddy-and-get-started-quickly)
-  - [Development](#development)
-    - [Virtual Environment](#virtual-environment)
-    - [Troubleshooting](#troubleshooting)
-    - [Benchmarks](#benchmarks)
-  - [Pull Requests](#pull-requests)
-    - [How to Send Pull Requests](#how-to-send-pull-requests)
-    - [How to Receive Comments](#how-to-receive-comments)
-    - [How to Get PRs Reviewed](#how-to-get-prs-reviewed)
-    - [How to Get PRs Merged](#how-to-get-prs-merged)
-    - [Stale PRs](#stale-prs)
-  - [Design Choices](#design-choices)
-    - [Focus on Capabilities, Not Structure Compliance](#focus-on-capabilities-not-structure-compliance)
-  - [Running Tests Locally](#running-tests-locally)
-    - [Testing against a different Core repo branch/commit](#testing-against-a-different-core-repo-branchcommit)
-  - [Style Guide](#style-guide)
-  - [Guideline for instrumentations](#guideline-for-instrumentations)
-    - [Update supported instrumentation package versions](#update-supported-instrumentation-package-versions)
-  - [Guideline for GenAI instrumentations](#guideline-for-genai-instrumentations)
-    - [Get Involved](#get-involved)
-  - [Expectations from contributors](#expectations-from-contributors)
-    - [Guidelines for native OpenTelemetry instrumentation](#guidelines-for-native-opentelemetry-instrumentation)
-  - [Updating supported Python versions](#updating-supported-python-versions)
-    - [Bumping the Python baseline](#bumping-the-python-baseline)
-    - [Adding support for a new Python release](#adding-support-for-a-new-python-release)
+The monorepo uses `uv` workspaces; each package owns its own `pyproject.toml`,
+version, and entry points. `tox.ini` defines the test matrix.
 
-## Find a Buddy and get Started Quickly
+## Making a change
 
-If you are looking for someone to help you find a starting point and be a resource for your first contribution, join our
-Slack and find a buddy!
+### 1. Set up the environment
 
-1. Join [Slack](https://slack.cncf.io/) and join our [chat room](https://cloud-native.slack.com/archives/C01PD4HUVBL).
-2. Post in the room with an introduction to yourself, what area you are interested in (check issues marked "Help Wanted"),
-and say you are looking for a buddy. We will match you with someone who has experience in that area.
-
-Your OpenTelemetry buddy is your resource to talk to directly on all aspects of contributing to OpenTelemetry: providing
-context, reviewing PRs, and helping those get merged. Buddies will not be available 24/7, but is committed to responding during their normal contribution hours.
-
-## Development
-
-This project uses [tox](https://tox.readthedocs.io) to automate
-some aspects of development, including testing against multiple Python versions.
-To install `tox`, run:
+Install all packages and dev tools into a single workspace virtual environment:
 
 ```sh
-pip install tox
+uv sync --frozen --all-packages
 ```
 
-You can also run tox with `uv` support. By default [tox.ini](./tox.ini) will automatically create a provisioned tox environment with `tox-uv`, but you can install it at host level:
+### 2. Lint
 
 ```sh
-pip install tox-uv
+uv run pre-commit run ruff --all-files
 ```
 
-You can run `tox` with the following arguments:
+### 3. Test
 
-* `tox` to run all existing tox commands, including unit tests for all packages
-  under multiple Python versions
-* `tox -e docs` to regenerate all docs
-* `tox -e py314-test-instrumentation-aiopg` to e.g. run the aiopg instrumentation unit tests under a specific
-  Python version
-* `tox -e spellcheck` to run a spellcheck on all the code
-* `tox -e lint-some-package` to run lint checks on `some-package`
-* `tox -e generate-workflows` to run creation of new CI workflows if tox environments have been updated
-* `tox -e ruff` to run ruff linter and formatter checks against the entire codebase
-* `tox -e precommit` to run all `pre-commit` actions
-
-`ruff check` and `ruff format` are executed when `tox -e ruff` is run. We strongly recommend you to configure [pre-commit](https://pre-commit.com/) locally to run `ruff` and `rstcheck` automatically before each commit by installing it as git hooks. You just need to [install pre-commit](https://pre-commit.com/#install) in your environment:
-
-```console
-pip install pre-commit -c dev-requirements.txt
-```
-
-and run this command inside the git repository:
-
-```console
-pre-commit install
-```
-
-See
-[`tox.ini`](https://github.com/open-telemetry/opentelemetry-python-contrib/blob/main/tox.ini)
-for more detail on available tox commands.
-
-### Virtual Environment
-
-You can also create a single virtual environment to make it easier to run local tests.
-
-For that, you'll need to install [`uv`](https://docs.astral.sh/uv/getting-started/installation/).
-
-After installing `uv`, you can run the following command:
+Run the test environment for the package you changed (append `-oldest` or
+`-latest` for the version variants defined in `tests/requirements.{oldest,latest}.txt`):
 
 ```sh
-uv sync
+uv run tox -e py312-test-instrumentation-openai-v2-latest
 ```
 
-This will create a virtual environment in the `.venv` directory and install all the necessary dependencies.
-
-### Troubleshooting
-
-Some packages may require additional system-wide dependencies to be installed. For example, you may need to install `libpq-dev` to run the postgresql client libraries instrumentation tests or `libsnappy-dev` to run the prometheus exporter tests. If you encounter a build error, please check the installation instructions for the package you are trying to run tests for.
-
-For `docs` building, you may need to install `mysql-client` and other required dependencies as necessary. Ensure the Python version used in your local setup matches the version used in the [CI](./.github/workflows/) to maintain compatibility when building the documentation.
-
-If you are using `tox-uv` for tests and have issues with resolving OpenTelemetry dependencies try:
+Run type checking across the workspace:
 
 ```sh
-uv sync --refresh
+uv run tox -e typecheck
 ```
 
-### Benchmarks
+### 4. Update the changelog
 
-Some packages have benchmark tests. To run them, run `tox -f benchmark`. Benchmark tests use `pytest-benchmark` and they output a table with results to the console.
+Add an entry to the affected package's `CHANGELOG.md` under the `Unreleased`
+section for any change with user-visible impact. Pure docs and tooling
+changes don't need an entry.
 
-To write benchmarks, simply use the [pytest benchmark fixture](https://pytest-benchmark.readthedocs.io/en/latest/usage.html#usage) like the following:
+## Keep PRs small
 
-```python
-def test_simple_start_span(benchmark):
-    def benchmark_start_as_current_span(span_name, attribute_num):
-        span = tracer.start_span(
-            span_name,
-            attributes={"count": attribute_num},
-        )
-        span.end()
+One logical change per PR. Don't bundle unrelated fixes, refactors, or
+features — split them so each can be reviewed and reverted independently.
+Small, focused PRs are much easier to review, and therefore much more
+likely to land quickly.
 
-    benchmark(benchmark_start_as_current_span, "benchmarkedSpan", 42)
-```
+If a PR review surfaces contentious or difficult points, consider splitting
+those into follow-up PRs so the uncontroversial parts can land and each of
+the harder points gets its own focused discussion and review.
 
-Make sure the test file is under the `benchmarks/` folder of
-the package it is benchmarking and further has a path that corresponds to the
-file in the package it is testing. Make sure that the file name begins with
-`test_benchmark_`. (e.g. `propagator/opentelemetry-propagator-aws-xray/benchmarks/trace/propagation/test_benchmark_aws_xray_propagator.py`)
+## Asking questions
 
-## Pull Requests
+Post in
+[#otel-genai-instrumentation](https://cloud-native.slack.com/archives/C06KR7ARS3X)
+on [CNCF Slack](https://slack.cncf.io/) or join the next
+[GenAI SIG](https://github.com/open-telemetry/community#sig-genai-instrumentation)
+meeting and add your topic to the
+[meeting agenda](https://docs.google.com/document/d/1EKIeDgBGXQPGehUigIRLwAUpRGa7-1kXB736EaYuJ2M).
+See the [community repo](https://github.com/open-telemetry/community#sig-genai-instrumentation)
+for current meeting times.
 
-### How to Send Pull Requests
+## Approvers and Maintainers
 
-Everyone is welcome to contribute code to `opentelemetry-python-contrib` via GitHub
-pull requests (PRs).
+### Maintainers
 
-To create a new PR, fork the project in GitHub and clone the upstream repo:
+- [Trask Stalnaker](https://github.com/trask), Microsoft
+- [Liudmila Molkova](https://github.com/lmolkova)
+- [Aaron Abbott](https://github.com/aabmass), Google
 
-```sh
-git clone https://github.com/open-telemetry/opentelemetry-python-contrib.git
-cd opentelemetry-python-contrib
-```
+For more information about the maintainer role, see the [community repository](https://github.com/open-telemetry/community/blob/main/guides/contributor/membership.md#maintainer).
 
-Add your fork as an origin:
+### Approvers
 
-```sh
-git remote add fork https://github.com/YOUR_GITHUB_USERNAME/opentelemetry-python-contrib.git
-```
+- [Dylan Russell](https://github.com/DylanRussell), Google
+- [Mike Goldsmith](https://github.com/MikeGoldsmith), Honeycomb
+- [Keith Decker](https://github.com/keith-decker), Cisco
+- [Leighton Chen](https://github.com/lzchen), Microsoft
 
-make sure you have all supported versions of Python installed, install `tox` only for the first time:
-
-```sh
-pip install tox tox-uv
-```
-
-Run tests in the root of the repository (this will run all tox environments and may take some time):
-
-```sh
-tox
-```
-
-Check out a new branch, make modifications and push the branch to your fork:
-
-```sh
-git checkout -b feature
-```
-
-After you edit the files, stage changes in the current directory:
-
-```sh
-git add .
-```
-
-Then run the following to commit the changes:
-
-```sh
-git commit
-git push fork feature
-```
-
-Open a pull request (PR) against the main `opentelemetry-python-contrib` repo.
-
-A descriptive PR title will help the community better triage and review your changes. Make sure to prefix with the name(s) of the package/subdirectory/domain that your PR updates. Following any of these examples will help:
-
-* "opentelemetry-instrumentation-dbapi: add client operation duration metrics"
-* "GenAI Utils: Add _BaseAgent base class and agent creation lifecycle"
-* "docs(google-genai): document config recording environment variables"
-
-### How to Receive Comments
-
-* If the PR is not ready for review, please put `[WIP]` in the title, tag it
-  as `work-in-progress`, or mark it as [`draft`](https://github.blog/2019-02-14-introducing-draft-pull-requests/).
-* Make sure tests and lint are passing locally before requesting a review.
-* Make sure CLA is signed and CI is clear.
-
-### How to Get PRs Reviewed
-
-The maintainers and approvers of this repository are not experts in every instrumentation there is here.
-In fact, each one of us knows enough about them to only review a few. Unfortunately, it can be hard
-to find enough experts in every instrumentation to quickly review every instrumentation PR. The
-instrumentation experts are listed in `.github/component_owners.yml` with their corresponding files
-or directories that they own. The owners listed there will be notified when PRs that modify their
-files are opened.
-
-If you are not getting reviews, please contact the respective owners directly.
-
-> [!TIP]
-> Even if you’re new here, your review counts —and it’s valuable to the project. Feel free to jump into any open PR: check the docs, run the tests, ask questions, or give a +1 when things look good. The OpenTelemetry-Python community is intentionally flexible: anyone can review PRs and help them get merged. Every comment moves the project forward, so don’t hesitate if you have expertise to review a PR.
-
-### How to Get PRs Merged
-
-A PR is considered to be **ready to merge** when:
-
-* It has received two approvals from [Approvers](https://github.com/open-telemetry/community/blob/main/community-membership.md#approver)
-  / [Maintainers](https://github.com/open-telemetry/community/blob/main/community-membership.md#maintainer)
-  (at different companies).
-* Major feedbacks are resolved.
-* It has been open for review for at least one working day. This gives people
-  reasonable time to review.
-* Trivial change (typo, cosmetic, doc, etc.) doesn't have to wait for one day.
-* Urgent fix can take exception as long as it has been actively communicated.
-* A changelog fragment is added (see [Changelog](#changelog) below), if there is any impact on behavior. e.g. doc entries are not required, but small bug entries are.
-
-Any Approver / Maintainer can merge the PR once it is **ready to merge**.
-
-### Changelog
-
-This project uses [towncrier](https://towncrier.readthedocs.io/) to manage changelogs. Instead of editing `CHANGELOG.md` directly, each PR should include a changelog fragment file.
-
-**Where to add fragments:**
-
-- **Coordinated packages** (most instrumentations, exporters, propagators): add to the root `.changelog/` directory
-- **Independently released packages** (`opentelemetry-opamp-client`, `opentelemetry-propagator-aws-xray`, `opentelemetry-resource-detector-azure`, `opentelemetry-sdk-extension-aws`): add to `<package>/.changelog/`
-
-**Creating a changelog fragment:**
-
-Create a file named `.changelog/<PR_NUMBER>.<TYPE>` where `TYPE` is one of: `added`, `changed`, `deprecated`, `removed`, `fixed`.
-
-The file should contain a one-line description of the change. For example, `.changelog/1234.fixed`:
-
-```
-`opentelemetry-instrumentation-flask`: fix request hook not being called for websocket connections
-```
-
-**Writing a good changelog entry:**
-
-- Write in imperative tone, as if completing the phrase "This change will..."
-- Keep entries concise — ideally under 80 characters
-- Prefix with the affected package name (e.g. `` `opentelemetry-instrumentation-flask`: ... ``)
-- Don't include the PR number — towncrier adds it automatically
-
-**Preview the changelog:**
-
-```console
-towncrier build --draft --version Unreleased
-```
-
-The CI will verify that a changelog fragment exists and that `CHANGELOG.md` files are not directly modified.
-
-If your change does not need a changelog entry, add the "Skip Changelog" label to the PR.
-
-### Stale PRs
-
-PRs with no activity for 14 days will be automatically marked as stale and closed after a further 14 days of inactivity. To prevent a PR from being marked stale, ensure there is regular activity (commits, comments, reviews, etc).
-
-Project managers can also exempt a PR from this by applying one of the following labels: `hold`, `WIP`, `blocked-by-spec`, `do not merge`.
-
-## Design Choices
-
-As with other OpenTelemetry clients, opentelemetry-python follows the
-[opentelemetry-specification](https://github.com/open-telemetry/opentelemetry-specification).
-
-It's especially valuable to read through the [library guidelines](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/library-guidelines.md).
-
-### Focus on Capabilities, Not Structure Compliance
-
-OpenTelemetry is an evolving specification, one where the desires and
-use cases are clear, but the method to satisfy those uses cases are not.
-
-As such, contributions should provide functionality and behavior that
-conforms to the specification, but the interface and structure is flexible.
-
-It is preferable to have contributions follow the idioms of the language
-rather than conform to specific API names or argument patterns in the spec.
-
-For a deeper discussion, see: https://github.com/open-telemetry/opentelemetry-specification/issues/165
-
-## Running Tests Locally
-
-1. Go to your Contrib repo directory. `git clone git@github.com:open-telemetry/opentelemetry-python-contrib.git && cd opentelemetry-python-contrib`.
-2. Make sure you have `tox` installed. `pip install tox`.
-3. Run `tox` without any arguments to run tests for all the packages. Read more about [tox](https://tox.readthedocs.io/en/latest/).
-
-Some tests can be slow due to pre-steps that do dependencies installs. To help with that, you can run tox a first time, and after that run the tests using previous installed dependencies in toxdir as following:
-
-1. First time run (e.g., opentelemetry-instrumentation-aiopg)
-```console
-tox -e py314-test-instrumentation-aiopg
-```
-2. Run tests again without pre-steps:
-```console
-.tox/py314-test-instrumentation-aiopg/bin/pytest instrumentation/opentelemetry-instrumentation-aiopg
-```
-
-### Testing against a different Core repo branch/commit
-
-Some of the tox targets install packages from the [OpenTelemetry Python Core Repository](https://github.com/open-telemetry/opentelemetry-python) via pip. The version of the packages installed defaults to the main branch in that repository when tox is run locally. It is possible to install packages tagged with a specific git commit hash by setting an environment variable before running tox as per the following example:
-
-```sh
-CORE_REPO_SHA=c49ad57bfe35cfc69bfa863d74058ca9bec55fc3 tox
-```
-
-The continuous integration overrides that environment variable with as per the configuration [here](https://github.com/open-telemetry/opentelemetry-python-contrib/blob/main/.github/workflows/test.yml#L17).
-
-## Style Guide
-
-* All Python files must include the following SPDX license header as the first
-  two lines (or immediately after a shebang line):
-
-  ```python
-  # Copyright The OpenTelemetry Authors
-  # SPDX-License-Identifier: Apache-2.0
-  ```
-
-  This is enforced by CI via `tox -e lint-license-header-check`.
-
-* docstrings should adhere to the [Google Python Style
-  Guide](http://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings)
-  as specified with the [napoleon
-  extension](http://www.sphinx-doc.org/en/master/usage/extensions/napoleon.html#google-vs-numpy)
-  extension in [Sphinx](http://www.sphinx-doc.org/en/master/index.html).
-
-## Guideline for instrumentations
-
-Below is a checklist of things to be mindful of when implementing a new instrumentation or working on a specific instrumentation. It is one of our goals as a community to keep the implementation specific details of instrumentations as similar across the board as possible for ease of testing and feature parity. It is also good to abstract as much common functionality as possible.
-
-- Find or create a new [Issue](https://github.com/open-telemetry/opentelemetry-python-contrib/issues) describing the tool or framework to instrument and its use cases to support with OpenTelemetry.
-  - Be familiar with the [expectations from contributors](#expectations-from-contributors) that apply.
-  - If you're a tool or framework maintainer, please consider using the OpenTelemetry API directly to support [native instrumentation](#guidelines-for-native-opentelemetry-instrumentation) instead of adding a new community instrumentation library.
-- Follow semantic conventions
-  - The instrumentation should follow the semantic conventions defined [here](https://github.com/open-telemetry/semantic-conventions/tree/main/docs).
-  - To ensure consistency, we encourage contributions that align with [STABLE](https://opentelemetry.io/docs/specs/otel/document-status/#lifecycle-status) semantic conventions if available. This approach helps us avoid potential confusion and reduces the need to support multiple outdated versions of semantic conventions. However, we are still open to considering exceptional cases where changes are well justified.
-  - Contributions related to outdated HTTP semantic conventions (conventions prior to becoming [stable](https://github.com/open-telemetry/semantic-conventions/tree/v1.23.0)) will likely be discouraged, as they increase complexity and the potential for misconceptions.
-- Contains a name that is not already claimed in [Pypi](https://pypi.org/). Contact a maintainer, bring the issue up in the weekly Python SIG or create a ticket in Pypi if a desired name has already been taken.
-- Extends from [BaseInstrumentor](https://github.com/open-telemetry/opentelemetry-python-contrib/blob/2518a4ac07cb62ad6587dd8f6cbb5f8663a7e179/opentelemetry-instrumentation/src/opentelemetry/instrumentation/instrumentor.py#L35)
-- Supports auto-instrumentation
-  - Add an entry point (ex. <https://github.com/open-telemetry/opentelemetry-python-contrib/blob/2518a4ac07cb62ad6587dd8f6cbb5f8663a7e179/instrumentation/opentelemetry-instrumentation-requests/pyproject.toml#L44>)
-  - Run `python scripts/generate_instrumentation_bootstrap.py` after adding a new instrumentation package.
-- Functionality that is common amongst other instrumentation and can be abstracted [here](https://github.com/open-telemetry/opentelemetry-python-contrib/tree/main/opentelemetry-instrumentation/src/opentelemetry/instrumentation)
-- Request/response [hooks](https://github.com/open-telemetry/opentelemetry-python-contrib/issues/408) for http instrumentations
-- `suppress_instrumentation` functionality
-  - ex. <https://github.com/open-telemetry/opentelemetry-python-contrib/blob/2518a4ac07cb62ad6587dd8f6cbb5f8663a7e179/opentelemetry-instrumentation/src/opentelemetry/instrumentation/utils.py#L191>
-- Suppress propagation functionality
-  - https://github.com/open-telemetry/opentelemetry-python-contrib/issues/344 for more context
-- `exclude_urls` functionality
-  - ex. <https://github.com/open-telemetry/opentelemetry-python-contrib/blob/2518a4ac07cb62ad6587dd8f6cbb5f8663a7e179/instrumentation/opentelemetry-instrumentation-flask/src/opentelemetry/instrumentation/flask/__init__.py#L327>
-- `url_filter` functionality
-  - ex. <https://github.com/open-telemetry/opentelemetry-python-contrib/blob/2518a4ac07cb62ad6587dd8f6cbb5f8663a7e179/instrumentation/opentelemetry-instrumentation-aiohttp-client/src/opentelemetry/instrumentation/aiohttp_client/__init__.py#L268>
-- `is_recording()` optimization on non-sampled spans
-  - ex. <https://github.com/open-telemetry/opentelemetry-python-contrib/blob/2518a4ac07cb62ad6587dd8f6cbb5f8663a7e179/instrumentation/opentelemetry-instrumentation-requests/src/opentelemetry/instrumentation/requests/__init__.py#L234>
-- Appropriate error handling
-  - ex. <https://github.com/open-telemetry/opentelemetry-python-contrib/blob/2518a4ac07cb62ad6587dd8f6cbb5f8663a7e179/instrumentation/opentelemetry-instrumentation-requests/src/opentelemetry/instrumentation/requests/__init__.py#L220>
-- Isolate sync and async test
-  - For synchronous tests, the typical test case class is inherited from `opentelemetry.test.test_base.TestBase`. However, if you want to write asynchronous tests, the test case class should inherit also from `IsolatedAsyncioTestCase`. Adding asynchronous tests to a common test class can lead to tests passing without actually running, which can be misleading.
-  - ex. <https://github.com/open-telemetry/opentelemetry-python-contrib/blob/60fb936b7e5371b3e5587074906c49fb873cbd76/instrumentation/opentelemetry-instrumentation-grpc/tests/test_aio_server_interceptor.py#L84>
-- Most of the instrumentations have the same version. If you are going to develop a new instrumentation it would probably have `X.Y.dev` version and depends on `opentelemetry-instrumentation` and `opentelemetry-semantic-conventions` for a [compatible version](https://peps.python.org/pep-0440/#compatible-release). That means that you may need to install the instrumentation dependencies from this repo and the core repo from git.
-- Documentation
-  - When adding a new instrumentation remember to add an entry in `docs/instrumentation/` named `<instrumentation>/<instrumentation>.rst` to have the instrumentation documentation referenced from the index. You can use the entry template available [here](./_template/autodoc_entry.rst)
-- Testing
-  - When adding a new instrumentation remember to update `tox.ini` adding appropriate rules in `envlist`, `command_pre` and `commands` sections
-
-### Update supported instrumentation package versions
-
-- Navigate to the **instrumentation package directory:**
-  - Update **`pyproject.toml`** file by modifying `instruments` or `instruments-any` entry in the `[project.optional-dependencies]` section with the new version constraint
-  - Update `_instruments` or `_instruments_any` variable in instrumentation **`package.py`** file with the new version constraint
-- At the **root of the project directory**, run `tox -e generate` to regenerate necessary files
-
-Please note that `instruments-any` is an optional field that can be used instead of or in addition to `instruments`. While `instruments` is a list of dependencies, _all_ of which are expected by the instrumentation, `instruments-any` is a list _any_ of which but not all are expected. For example, the following entry requires both `util` and `common` plus either `foo` or `bar` to be present for the instrumentation to occur:
-```
-[project.optional-dependencies]
-instruments = [
-  "util ~= 1.0"
-  "common ~= 2.0"
-]
-instruments-any = [
-  "foo ~= 3.0"
-  "bar ~= 4.0"
-]
-```
-
-<!-- See https://github.com/open-telemetry/opentelemetry-python-contrib/pull/3610 for details on instruments-any -->
-
-If you're adding support for a new version of the instrumentation package, follow these additional steps:
-
-- At the **instrumentation package directory:** Add new test-requirements.txt file with the respective package version required for testing
-- At the **root of the project directory**: Add a new test environment entry for the package version in [tox.ini](./tox.ini) and run `tox -e generate-workflows` to regenerate new workflows accordingly. In the same [tox.ini](./tox.ini) file, search for `opentelemetry-instrumentation-{package}/test-requirements` and add a new line to point to the new test-requirements.txt you created in the previous step so tox can install the correct requirements.
-
-Example PRs: [#2976](https://github.com/open-telemetry/opentelemetry-python-contrib/pull/2976), [#2845](https://github.com/open-telemetry/opentelemetry-python-contrib/pull/2845)
-
-## Guideline for GenAI instrumentations
-
-Instrumentations that relate to [Generative AI](https://opentelemetry.io/docs/specs/semconv/gen-ai/) systems will be placed in the [instrumentation-genai](./instrumentation-genai) folder. This section covers contributions related to those instrumentations. Please note that the [guidelines for instrumentations](#guideline-for-instrumentations) and [expectations from contributors](#expectations-from-contributors) still apply.
-
-### Get Involved
-
-* Reviewing PRs: If you would like to be tagged as reviewer in new PRs related to these instrumentations, please submit a PR to add your GitHub handle to [component_owners.yml](https://github.com/open-telemetry/opentelemetry-python-contrib/blob/main/.github/component_owners.yml) under the corresponding instrumentation folder(s).
-
-* Approving PRs: If you would like to be able to approve PRs related to these instrumentations, you must join [opentelemetry-python-contrib-approvers](https://github.com/orgs/open-telemetry/teams/opentelemetry-python-contrib-approvers) team. Please ask one of the [Python contrib maintainers](https://github.com/orgs/open-telemetry/teams/opentelemetry-python-contrib-maintainers) to be accepted into the team.
-
-* Tracking and Creating Issues: For tracking issues related to Generative AI, please filter or add the label [gen-ai](https://github.com/open-telemetry/opentelemetry-python-contrib/issues?q=is%3Aopen+is%3Aissue+label%3Agen-ai) when creating or searching issues. If you do not see an issue related to an instrumentation you would like to contribute to, please create a new tracking issue so the community is aware of its progress.
-
-## Expectations from contributors
-
-OpenTelemetry is an open source community, and as such, greatly encourages contributions from anyone interested in the project. With that being said, there is a certain level of expectation from contributors even after a pull request is merged, specifically pertaining to instrumentations. The OpenTelemetry Python community expects contributors to maintain a level of support and interest in the instrumentations they contribute. This is to ensure that the instrumentation does not become stale and still functions the way the original contributor intended. Some instrumentations also pertain to libraries that the current members of the community are not so familiar with, so it is necessary to rely on the expertise of the original contributing parties.
-
-### Use of AI coding assistants
-
-AI coding assistants can be valuable tools for contributors. They may help with understanding the codebase, drafting changes, writing tests and improving documentation. Contributors are welcome to use AI tools as a part of their contribution workflow. 
-
-However, contributors remain responsible for the quality and correctness of their contributions. AI generated material must be carefully reviewed, validated and adapted by the contributor before being submitted to the project.
-
-Maintainers reserve the right to close pull requests or other contributions that appear to have been primarily generated by AI with little or no meaningful review from the contributor. This includes, but is not limited to:
-
-- Opening a large number of low quality pull requests in a short period of time.
-- Submitting changes that are incomplete, incorrect, unrelated to the issue or not aligned with project conventions.
-- Posting review replies, issue comments or other responses that appear to be AI generated and/or do not meaningfully address maintainer feedback.
-- Submitting pull requests that require maintainers to spend significant time correcting or explaining basic issues that should have been caught by the contributor before submission.
-
-This policy is intended to reduce unnecessary burden on maintainers and ensure that AI tools are used responsibly in support of high quality contributions.
-
-### Guidelines for native OpenTelemetry instrumentation
-
-The preferred approach to supporting instrumentation of a tool or framework is native OpenTelemetry instrumentation. Compared to adding a new instrumentation library to this community repository, native instrumentation is better for:
-
-* continued support by framework experts long-term
-* access to more context for critical paths and correlations
-* granularity and performance
-
-To support native instrumentation, the tool or framework should use the [OpenTelemetry API](https://opentelemetry-python.readthedocs.io/en/latest/) directly to emit traces, metrics, and logs.
-
-## Updating supported Python versions
-
-### Bumping the Python baseline
-
-When updating the minimum supported Python version remember to:
-
-- Remove the version in `pyproject.toml` trove classifiers
-- Remove the version from `tox.ini`
-- Update github workflows accordingly with `tox -e generate-workflows`
-- Search for `sys.version_info` usage and remove code for unsupported versions
-- Bump `py-version` in `.pylintrc` for Python version dependent checks
-
-### Adding support for a new Python release
-
-When adding support for a new Python release remember to:
-
-- Add the version in `tox.ini`
-- Add the version in `pyproject.toml` trove classifiers
-- Update github workflows accordingly with `tox -e generate-workflows`; lint and benchmarks use the latest supported version
-- Update `.pre-commit-config.yaml`
-- Update tox examples in the documentation
+For more information about the approver role, see the [community repository](https://github.com/open-telemetry/community/blob/main/guides/contributor/membership.md#approver).

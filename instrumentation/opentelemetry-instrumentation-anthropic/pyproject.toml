@@ -38,8 +38,8 @@ instruments = ["anthropic >= 0.51.0"]
 anthropic = "opentelemetry.instrumentation.anthropic:AnthropicInstrumentor"
 
 [project.urls]
-Homepage = "https://github.com/open-telemetry/opentelemetry-python-contrib/tree/main/instrumentation-genai/opentelemetry-instrumentation-anthropic"
-Repository = "https://github.com/open-telemetry/opentelemetry-python-contrib"
+Homepage = "https://github.com/open-telemetry/opentelemetry-python-genai/tree/main/instrumentation/opentelemetry-instrumentation-anthropic"
+Repository = "https://github.com/open-telemetry/opentelemetry-python-genai"
 
 [tool.hatch.version]
 path = "src/opentelemetry/instrumentation/anthropic/version.py"

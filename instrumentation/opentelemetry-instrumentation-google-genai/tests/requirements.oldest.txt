@@ -31,4 +31,4 @@ fsspec==2025.9.0
 
 # Install locally from the folder. This path is relative to the
 # root directory, given invocation from "tox" at root level.
--e instrumentation-genai/opentelemetry-instrumentation-google-genai
+-e instrumentation/opentelemetry-instrumentation-google-genai

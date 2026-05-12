@@ -15,60 +15,16 @@
 
 import os
 import sys
-from configparser import ConfigParser
 from os import listdir
 from os.path import isdir, join
 
-# configure django to avoid the following exception:
-# django.core.exceptions.ImproperlyConfigured: Requested settings, but settings
-# are not configured. You must either define the environment variable
-# DJANGO_SETTINGS_MODULE or call settings.configure() before accessing settings.
-from django.conf import settings
-
-settings.configure()
-
 source_dirs = []
-
-exp = "../exporter"
-exp_dirs = [
-    os.path.abspath("/".join([exp, f, "src"]))
-    for f in listdir(exp)
-    if isdir(join(exp, f))
-]
 
 instr = "../instrumentation"
 instr_dirs = [
     os.path.abspath("/".join([instr, f, "src"]))
     for f in listdir(instr)
     if isdir(join(instr, f))
-]
-
-instr_genai = "../instrumentation-genai"
-instr_genai_dirs = [
-    os.path.abspath("/".join([instr_genai, f, "src"]))
-    for f in listdir(instr_genai)
-    if isdir(join(instr_genai, f))
-]
-
-prop = "../propagator"
-prop_dirs = [
-    os.path.abspath("/".join([prop, f, "src"]))
-    for f in listdir(prop)
-    if isdir(join(prop, f))
-]
-
-sdk_ext = "../sdk-extension"
-sdk_ext_dirs = [
-    os.path.abspath("/".join([sdk_ext, f, "src"]))
-    for f in listdir(sdk_ext)
-    if isdir(join(sdk_ext, f))
-]
-
-resource = "../resource"
-resource_dirs = [
-    os.path.abspath("/".join([resource, f, "src"]))
-    for f in listdir(resource)
-    if isdir(join(resource, f))
 ]
 
 util = "../util"
@@ -78,27 +34,11 @@ util_dirs = [
     if isdir(join(util, f))
 ]
 
-opamp = "../opamp"
-opamp_dirs = [
-    os.path.abspath("/".join([opamp, f, "src"]))
-    for f in listdir(opamp)
-    if isdir(join(opamp, f))
-]
-
-sys.path[:0] = (
-    exp_dirs
-    + instr_dirs
-    + instr_genai_dirs
-    + sdk_ext_dirs
-    + prop_dirs
-    + resource_dirs
-    + util_dirs
-    + opamp_dirs
-)
+sys.path[:0] = instr_dirs + util_dirs
 
 # -- Project information -----------------------------------------------------
 
-project = "OpenTelemetry Python Contrib"
+project = "OpenTelemetry Python GenAI"
 copyright = "OpenTelemetry Authors"  # pylint: disable=redefined-builtin
 author = "OpenTelemetry Authors"
 
@@ -151,53 +91,7 @@ intersphinx_mapping = {
 # http://www.sphinx-doc.org/en/master/config.html#confval-nitpicky
 # Sphinx will warn about all references where the target cannot be found.
 nitpicky = True
-# Sphinx does not recognize generic type TypeVars
-# Container supposedly were fixed, but does not work
-# https://github.com/sphinx-doc/sphinx/pull/3744
-nitpick_ignore = [
-    (
-        "py:class",
-        "opamp_pb2.RemoteConfigStatus",
-    ),
-    (
-        "py:class",
-        "opamp_pb2.EffectiveConfig",
-    ),
-    (
-        "py:class",
-        "opamp_pb2.AgentRemoteConfig",
-    ),
-]
-
-cfg = ConfigParser()
-cfg.read("./nitpick-exceptions.ini")
-mcfg = cfg["default"]
-
-
-def getlistcfg(strval):
-    return [
-        val.strip()
-        for line in strval.split("\n")
-        for val in line.split(",")
-        if val.strip()
-    ]
-
-
-ignore_categories = [
-    "py-class",
-    "py-func",
-    "py-exc",
-    "py-obj",
-    "py-data",
-    "any",
-]
-
-for category in ignore_categories:
-    if category in mcfg:
-        items = getlistcfg(mcfg[category])
-        for item in items:
-            nitpick_ignore.append((category.replace("-", ":"), item))
-
+nitpick_ignore = []
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]
@@ -231,7 +125,7 @@ branch = os.environ.get("READTHEDOCS_VERSION")
 if branch is None or branch == "latest":
     branch = "main"
 
-REPO = "open-telemetry/opentelemetry-python-contrib/"
+REPO = "open-telemetry/opentelemetry-python-genai/"
 scm_raw_web = "https://raw.githubusercontent.com/" + REPO + branch
 scm_web = "https://github.com/" + REPO + "blob/" + branch
 

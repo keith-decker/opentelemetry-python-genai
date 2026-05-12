@@ -78,7 +78,6 @@ packages_to_exclude = [
 # Static version specifiers for instrumentations that are released independently
 independent_packages = {
     "opentelemetry-instrumentation-openai-v2": "",
-    "opentelemetry-instrumentation-vertexai": ">=2.0b0",
     "opentelemetry-instrumentation-google-genai": "",
 }
 

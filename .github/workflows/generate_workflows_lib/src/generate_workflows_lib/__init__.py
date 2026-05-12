@@ -13,9 +13,6 @@ _tox_test_env_regex = re_compile(
     r"(?P<name>[-\w]+\w)-?(?P<test_requirements>\d+)?"
 )
 _tox_lint_env_regex = re_compile(r"lint-(?P<name>[-\w]+)")
-_tox_contrib_env_regex = re_compile(
-    r"py310-test-(?P<name>[-\w]+\w)-?(?P<contrib_requirements>\d+)?"
-)
 
 
 def get_tox_envs(tox_ini_path: Path) -> list:
@@ -119,37 +116,6 @@ def get_lint_job_datas(tox_envs: list) -> list:
     return lint_job_datas
 
 
-def get_contrib_job_datas(tox_envs: list) -> list:
-    contrib_job_datas = []
-
-    for tox_env in tox_envs:
-        tox_contrib_env_match = _tox_contrib_env_regex.match(tox_env)
-
-        if tox_contrib_env_match is None:
-            continue
-
-        groups = tox_contrib_env_match.groupdict()
-
-        tox_env = tox_contrib_env_match.string
-
-        contrib_requirements = groups["contrib_requirements"]
-
-        if contrib_requirements is None:
-            contrib_requirements = " "
-
-        else:
-            contrib_requirements = f"-{contrib_requirements} "
-
-        contrib_job_datas.append(
-            {
-                "ui_name": (f"{groups['name']}{contrib_requirements}"),
-                "tox_env": tox_env,
-            }
-        )
-
-    return contrib_job_datas
-
-
 def get_misc_job_datas(tox_envs: list) -> list:
     misc_job_datas = []
 
@@ -159,7 +125,6 @@ def get_misc_job_datas(tox_envs: list) -> list:
         if (
             _tox_test_env_regex.match(tox_env) is not None
             or _tox_lint_env_regex.match(tox_env) is not None
-            or _tox_contrib_env_regex.match(tox_env) is not None
             or _tox_benchmark_env_regex.match(tox_env) is not None
         ):
             continue
@@ -201,18 +166,6 @@ def generate_lint_workflow(
     _generate_workflow(
         get_lint_job_datas(get_tox_envs(tox_ini_path)),
         "lint",
-        workflow_directory_path,
-    )
-
-
-def generate_contrib_workflow(
-    workflow_directory_path: Path,
-) -> None:
-    _generate_workflow(
-        get_contrib_job_datas(
-            get_tox_envs(Path(__file__).parent.joinpath("tox.ini"))
-        ),
-        "core_contrib_test",
         workflow_directory_path,
     )
 

@@ -1,9 +1,8 @@
 ---
-applyTo: "{instrumentation,instrumentation-genai}/**"
+applyTo: "instrumentation/**"
 ---
 
-Review rules for PRs touching `instrumentation/**` and `instrumentation-genai/**`. Flag violations
-with a link to the rule.
+Review rules for PRs touching `instrumentation/**`. Flag violations with a link to the rule.
 
 ## 0. Reviewer mindset
 
@@ -18,11 +17,9 @@ For new instrumentations, consult upstream library docs and judge:
 For changes to existing instrumentations: prefer back-compat. Break users only for a real reason;
 prefer opt-in or additive. Breaking changes need explicit justification in the PR.
 
-## 1. Component ownership & maintenance commitment
+## 1. Maintenance commitment
 
-- New instrumentations must add an entry under the correct folder in
-  [`component_owners.yml`](../component_owners.yml) in the same PR. Contributor must commit to
-  long-term maintenance. See
+- New instrumentations require contributor commitment to long-term maintenance. See
   [Expectations from contributors](../../CONTRIBUTING.md#expectations-from-contributors) and the
   general [instrumentation checklist](../../CONTRIBUTING.md#guideline-for-instrumentations).
 
