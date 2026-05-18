@@ -44,6 +44,9 @@ class _RetrievalTestBase(TestCase):
             tracer_provider=self.tracer_provider,
         )
 
+    def tearDown(self) -> None:
+        _OpenTelemetrySemanticConventionStability._initialized = False
+
     def _get_finished_spans(self):
         return self.span_exporter.get_finished_spans()
 
