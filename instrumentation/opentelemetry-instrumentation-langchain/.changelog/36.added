@@ -1,0 +1,1 @@
+Add retrieval span support via `on_retriever_start`, `on_retriever_end`, and `on_retriever_error` callbacks using `RetrievalInvocation`.
