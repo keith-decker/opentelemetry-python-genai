@@ -452,7 +452,9 @@ class TelemetryHandlerRetrievalMetricsTest(TestBase):
         self.assertEqual(len(duration_points), 1)
         duration_point = duration_points[0]
 
-        self.assertNotIn(GenAI.GEN_AI_DATA_SOURCE_ID, duration_point.attributes)
+        self.assertNotIn(
+            GenAI.GEN_AI_DATA_SOURCE_ID, duration_point.attributes
+        )
         self.assertEqual(
             duration_point.attributes[GenAI.GEN_AI_PROVIDER_NAME], "weaviate"
         )
