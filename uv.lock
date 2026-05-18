@@ -1211,7 +1211,7 @@ instruments = [
 
 [package.metadata]
 requires-dist = [
-    { name = "google-genai", marker = "extra == 'instruments'", specifier = ">=1.32.0" },
+    { name = "google-genai", marker = "extra == 'instruments'", specifier = ">=1.32.0,<3" },
     { name = "opentelemetry-api", specifier = "~=1.40" },
     { name = "opentelemetry-instrumentation", specifier = ">=0.61b0,<2" },
     { name = "opentelemetry-semantic-conventions", specifier = ">=0.61b0,<2" },
