@@ -50,40 +50,40 @@ class _RetrievalTestBase(TestCase):
 
 class TelemetryHandlerRetrievalTest(_RetrievalTestBase):  # pylint: disable=too-many-public-methods
     # ------------------------------------------------------------------
-    # start_retrieval
+    # retrieval
     # ------------------------------------------------------------------
 
-    def test_start_retrieval_creates_span(self) -> None:
-        invocation = self.handler.start_retrieval()
+    def test_retrieval_creates_span(self) -> None:
+        invocation = self.handler.retrieval()
         self.assertIsNot(invocation.span, INVALID_SPAN)
         invocation.stop()
 
-    def test_start_retrieval_span_name_with_data_source_id(self) -> None:
-        invocation = self.handler.start_retrieval(data_source_id="H7STPQYOND")
+    def test_retrieval_span_name_with_data_source_id(self) -> None:
+        invocation = self.handler.retrieval(data_source_id="H7STPQYOND")
         invocation.stop()
 
         spans = self._get_finished_spans()
         self.assertEqual(len(spans), 1)
         self.assertEqual(spans[0].name, "retrieval H7STPQYOND")
 
-    def test_start_retrieval_span_name_without_data_source_id(self) -> None:
-        invocation = self.handler.start_retrieval()
+    def test_retrieval_span_name_without_data_source_id(self) -> None:
+        invocation = self.handler.retrieval()
         invocation.stop()
 
         spans = self._get_finished_spans()
         self.assertEqual(len(spans), 1)
         self.assertEqual(spans[0].name, "retrieval")
 
-    def test_start_retrieval_span_kind_is_client(self) -> None:
-        invocation = self.handler.start_retrieval()
+    def test_retrieval_span_kind_is_client(self) -> None:
+        invocation = self.handler.retrieval()
         invocation.stop()
 
         spans = self._get_finished_spans()
         self.assertEqual(spans[0].kind, SpanKind.CLIENT)
 
-    def test_start_retrieval_records_monotonic_start(self) -> None:
+    def test_retrieval_records_monotonic_start(self) -> None:
         with patch("timeit.default_timer", return_value=42.0):
-            invocation = self.handler.start_retrieval()
+            invocation = self.handler.retrieval()
         self.assertEqual(invocation._monotonic_start_s, 42.0)
         invocation.stop()
 
@@ -92,7 +92,7 @@ class TelemetryHandlerRetrievalTest(_RetrievalTestBase):  # pylint: disable=too-
     # ------------------------------------------------------------------
 
     def test_stop_sets_operation_name(self) -> None:
-        invocation = self.handler.start_retrieval()
+        invocation = self.handler.retrieval()
         invocation.stop()
 
         spans = self._get_finished_spans()
@@ -101,7 +101,7 @@ class TelemetryHandlerRetrievalTest(_RetrievalTestBase):  # pylint: disable=too-
         )
 
     def test_stop_sets_data_source_id(self) -> None:
-        invocation = self.handler.start_retrieval(data_source_id="DS123")
+        invocation = self.handler.retrieval(data_source_id="DS123")
         invocation.stop()
 
         spans = self._get_finished_spans()
@@ -110,7 +110,7 @@ class TelemetryHandlerRetrievalTest(_RetrievalTestBase):  # pylint: disable=too-
         )
 
     def test_stop_sets_provider_name(self) -> None:
-        invocation = self.handler.start_retrieval(provider="pinecone")
+        invocation = self.handler.retrieval(provider="pinecone")
         invocation.stop()
 
         spans = self._get_finished_spans()
@@ -119,7 +119,7 @@ class TelemetryHandlerRetrievalTest(_RetrievalTestBase):  # pylint: disable=too-
         )
 
     def test_stop_sets_request_model(self) -> None:
-        invocation = self.handler.start_retrieval(
+        invocation = self.handler.retrieval(
             request_model="text-embedding-ada-002"
         )
         invocation.stop()
@@ -131,7 +131,7 @@ class TelemetryHandlerRetrievalTest(_RetrievalTestBase):  # pylint: disable=too-
         )
 
     def test_stop_sets_server_address_and_port(self) -> None:
-        invocation = self.handler.start_retrieval(
+        invocation = self.handler.retrieval(
             server_address="db.example.com", server_port=443
         )
         invocation.stop()
@@ -146,14 +146,14 @@ class TelemetryHandlerRetrievalTest(_RetrievalTestBase):  # pylint: disable=too-
     # ------------------------------------------------------------------
 
     def test_stop_sets_top_k(self) -> None:
-        invocation = self.handler.start_retrieval()
-        invocation.top_k = 10.0
+        invocation = self.handler.retrieval()
+        invocation.top_k = 10
         invocation.stop()
 
         spans = self._get_finished_spans()
         value = spans[0].attributes[GenAI.GEN_AI_REQUEST_TOP_K]
-        self.assertIsInstance(value, float)
-        self.assertEqual(value, 10.0)
+        self.assertIsInstance(value, int)
+        self.assertEqual(value, 10)
 
     @patch.dict(
         os.environ,
@@ -166,7 +166,7 @@ class TelemetryHandlerRetrievalTest(_RetrievalTestBase):  # pylint: disable=too-
         _OpenTelemetrySemanticConventionStability._initialized = False
         _OpenTelemetrySemanticConventionStability._initialize()
 
-        invocation = self.handler.start_retrieval()
+        invocation = self.handler.retrieval()
         invocation.query_text = "What is the capital of France?"
         invocation.stop()
 
@@ -178,7 +178,7 @@ class TelemetryHandlerRetrievalTest(_RetrievalTestBase):  # pylint: disable=too-
     def test_stop_suppresses_query_text_when_content_capture_disabled(
         self,
     ) -> None:
-        invocation = self.handler.start_retrieval()
+        invocation = self.handler.retrieval()
         invocation.query_text = "What is the capital of France?"
         invocation.stop()
 
@@ -199,7 +199,7 @@ class TelemetryHandlerRetrievalTest(_RetrievalTestBase):  # pylint: disable=too-
         _OpenTelemetrySemanticConventionStability._initialize()
 
         docs = [{"id": "doc_1", "score": 0.95}, {"id": "doc_2", "score": 0.87}]
-        invocation = self.handler.start_retrieval()
+        invocation = self.handler.retrieval()
         invocation.documents = docs
         invocation.stop()
 
@@ -212,7 +212,7 @@ class TelemetryHandlerRetrievalTest(_RetrievalTestBase):  # pylint: disable=too-
         self,
     ) -> None:
         docs = [{"id": "doc_1", "score": 0.95}]
-        invocation = self.handler.start_retrieval()
+        invocation = self.handler.retrieval()
         invocation.documents = docs
         invocation.stop()
 
@@ -220,7 +220,7 @@ class TelemetryHandlerRetrievalTest(_RetrievalTestBase):  # pylint: disable=too-
         self.assertNotIn(GenAI.GEN_AI_RETRIEVAL_DOCUMENTS, spans[0].attributes)
 
     def test_stop_sets_custom_attributes(self) -> None:
-        invocation = self.handler.start_retrieval()
+        invocation = self.handler.retrieval()
         invocation.attributes["custom.key"] = "value"
         invocation.stop()
 
@@ -228,7 +228,7 @@ class TelemetryHandlerRetrievalTest(_RetrievalTestBase):  # pylint: disable=too-
         self.assertEqual(spans[0].attributes["custom.key"], "value")
 
     def test_stop_omits_none_attributes(self) -> None:
-        invocation = self.handler.start_retrieval()
+        invocation = self.handler.retrieval()
         invocation.stop()
 
         spans = self._get_finished_spans()
@@ -243,7 +243,7 @@ class TelemetryHandlerRetrievalTest(_RetrievalTestBase):  # pylint: disable=too-
     # ------------------------------------------------------------------
 
     def test_fail_sets_error_status(self) -> None:
-        invocation = self.handler.start_retrieval()
+        invocation = self.handler.retrieval()
         invocation.fail(Error(message="timeout", type=TimeoutError))
 
         spans = self._get_finished_spans()
@@ -251,14 +251,14 @@ class TelemetryHandlerRetrievalTest(_RetrievalTestBase):  # pylint: disable=too-
         self.assertEqual(spans[0].status.description, "timeout")
 
     def test_fail_sets_error_type_attribute(self) -> None:
-        invocation = self.handler.start_retrieval()
+        invocation = self.handler.retrieval()
         invocation.fail(Error(message="bad", type=ConnectionError))
 
         spans = self._get_finished_spans()
         self.assertEqual(spans[0].attributes["error.type"], "ConnectionError")
 
     def test_fail_sets_operation_name(self) -> None:
-        invocation = self.handler.start_retrieval()
+        invocation = self.handler.retrieval()
         invocation.fail(Error(message="err", type=RuntimeError))
 
         spans = self._get_finished_spans()
@@ -267,7 +267,7 @@ class TelemetryHandlerRetrievalTest(_RetrievalTestBase):  # pylint: disable=too-
         )
 
     def test_fail_with_exception_instance(self) -> None:
-        invocation = self.handler.start_retrieval()
+        invocation = self.handler.retrieval()
         invocation.fail(ValueError("oops"))
 
         spans = self._get_finished_spans()
@@ -317,12 +317,13 @@ class TelemetryHandlerRetrievalContextManagerTest(_RetrievalTestBase):
 
     def test_context_manager_sets_attributes_on_span(self) -> None:
         with self.handler.retrieval(provider="weaviate") as inv:
-            inv.top_k = 5.0
+            inv.top_k = 5
 
         spans = self._get_finished_spans()
         attrs = spans[0].attributes
         self.assertEqual(attrs[GenAI.GEN_AI_PROVIDER_NAME], "weaviate")
-        self.assertEqual(attrs[GenAI.GEN_AI_REQUEST_TOP_K], 5.0)
+        self.assertIsInstance(attrs[GenAI.GEN_AI_REQUEST_TOP_K], int)
+        self.assertEqual(attrs[GenAI.GEN_AI_REQUEST_TOP_K], 5)
 
 
 class TelemetryHandlerRetrievalSamplingTest(_RetrievalTestBase):
@@ -352,7 +353,7 @@ class TelemetryHandlerRetrievalSamplingTest(_RetrievalTestBase):
         )
         handler = TelemetryHandler(tracer_provider=sampler_provider)
 
-        invocation = handler.start_retrieval(
+        invocation = handler.retrieval(
             data_source_id="DS42",
             provider="pinecone",
             server_address="db.example.com",

@@ -25,7 +25,7 @@ from opentelemetry.util.genai.utils import (
 class RetrievalInvocation(GenAIInvocation):
     """Represents a single retrieval invocation (retrieval span).
 
-    Use handler.start_retrieval() or the handler.retrieval() context manager
+    Use handler.retrieval() rather than constructing this directly.
     rather than constructing this directly.
 
     Reference: https://github.com/open-telemetry/semantic-conventions/blob/main/docs/gen-ai/gen-ai-spans.md#retrievals
@@ -56,7 +56,7 @@ class RetrievalInvocation(GenAIInvocation):
         server_address: str | None = None,
         server_port: int | None = None,
     ) -> None:
-        """Use handler.start_retrieval() or handler.retrieval() instead of calling this directly."""
+        """Use handler.retrieval() instead of calling this directly."""
         _operation_name = GenAI.GenAiOperationNameValues.RETRIEVAL.value
         super().__init__(
             tracer,
