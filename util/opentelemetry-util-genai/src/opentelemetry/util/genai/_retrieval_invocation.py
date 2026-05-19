@@ -73,7 +73,7 @@ class RetrievalInvocation(GenAIInvocation):
         self.request_model = request_model
         self.server_address = server_address
         self.server_port = server_port
-        self.top_k: int | None = None
+        self.top_k: float | None = None
         self.query_text: str | None = None
         self.documents: Any = None
         self._start(self._get_base_attributes())
