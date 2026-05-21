@@ -280,8 +280,18 @@ def get_llm_request_attributes(
             else GenAIAttributes.GEN_AI_OPENAI_REQUEST_RESPONSE_FORMAT
         )
         if (response_format := kwargs.get("response_format")) is not None:
-            # response_format may be string or object with a string in the `type` key
-            if isinstance(response_format, Mapping):
+            # response_format may be string, object with a string in the `type` key,
+            # or a type (e.g. Pydantic model class used with parse())
+            if isinstance(response_format, type):
+                if latest_experimental_enabled:
+                    attributes[request_response_format_attr_key] = (
+                        GenAIAttributes.GenAiOutputTypeValues.JSON.value
+                    )
+                else:
+                    attributes[request_response_format_attr_key] = (
+                        GenAIAttributes.GenAiOpenaiRequestResponseFormatValues.JSON_SCHEMA.value
+                    )
+            elif isinstance(response_format, Mapping):
                 if (
                     response_format_type := response_format.get("type")
                 ) is not None:
@@ -369,8 +379,13 @@ def create_chat_invocation(
     if (
         response_format := get_value(kwargs.get("response_format"))
     ) is not None:
-        # response_format may be string or object with a string in the `type` key
-        if isinstance(response_format, Mapping):
+        # response_format may be string, object with a string in the `type` key,
+        # or a type (e.g. Pydantic model class used with parse())
+        if isinstance(response_format, type):
+            invocation.attributes[GenAIAttributes.GEN_AI_OUTPUT_TYPE] = (
+                GenAIAttributes.GenAiOutputTypeValues.JSON.value
+            )
+        elif isinstance(response_format, Mapping):
             if (
                 response_format_type := get_value(response_format.get("type"))
             ) is not None:

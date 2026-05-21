@@ -9,8 +9,10 @@ from typing import Any
 
 import pytest
 
-# Skip collection when weaver_live_check isn't installed (non-conformance envs).
+# Skip collection when weaver_live_check or OTLP exporters aren't installed
+# (non-conformance envs).
 pytest.importorskip("opentelemetry.test.weaver_live_check")
+pytest.importorskip("opentelemetry.exporter.otlp.proto.grpc")
 
 from opentelemetry.test.weaver_live_check import WeaverLiveCheck  # noqa: E402
 from opentelemetry.test_util_genai.conformance import (  # noqa: E402
@@ -18,15 +20,17 @@ from opentelemetry.test_util_genai.conformance import (  # noqa: E402
     run_conformance,
 )
 
+from .conformance.agent import AgentScenario
 from .conformance.inference import InferenceScenario
-
-pytestmark = pytest.mark.conformance
+from .conformance.workflow import WorkflowScenario
 
 
 @pytest.mark.parametrize(
     "scenario",
     [
         InferenceScenario(),
+        AgentScenario(),
+        WorkflowScenario(),
     ],
     ids=lambda s: type(s).__name__,
 )

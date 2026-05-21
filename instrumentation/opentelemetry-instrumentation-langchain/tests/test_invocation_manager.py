@@ -104,7 +104,73 @@ def test_delete_invocation_state(invocation_manager, mock_invocation):
     assert run_id not in invocation_manager._invocations
 
 
-def test_delete_invocation_state_with_children(invocation_manager):
+def test_delete_invocation_state_deferred_while_children_live(
+    invocation_manager,
+):
+    """Deleting a parent while children are still live defers its removal."""
+    parent_id = uuid.uuid4()
+    child_id = uuid.uuid4()
+
+    parent_invocation = mock.Mock(spec=GenAIInvocation)
+    child_invocation = mock.Mock(spec=GenAIInvocation)
+
+    invocation_manager.add_invocation_state(
+        run_id=parent_id, parent_run_id=None, invocation=parent_invocation
+    )
+    invocation_manager.add_invocation_state(
+        run_id=child_id, parent_run_id=parent_id, invocation=child_invocation
+    )
+
+    # Delete the parent while the child is still live
+    invocation_manager.delete_invocation_state(parent_id)
+
+    # Parent should still be present (deferred) because child is live
+    assert parent_id in invocation_manager._invocations
+    assert invocation_manager._invocations[parent_id].ended is True
+
+    # After the child is deleted, the parent should also be cleaned up
+    invocation_manager.delete_invocation_state(child_id)
+
+    assert child_id not in invocation_manager._invocations
+    assert parent_id not in invocation_manager._invocations
+
+
+def test_delete_invocation_state_propagates_upward(invocation_manager):
+    """When the last child is removed, an already-ended parent is cleaned up."""
+    grandparent_id = uuid.uuid4()
+    parent_id = uuid.uuid4()
+    child_id = uuid.uuid4()
+
+    for run_id, parent in [
+        (grandparent_id, None),
+        (parent_id, grandparent_id),
+        (child_id, parent_id),
+    ]:
+        invocation_manager.add_invocation_state(
+            run_id=run_id,
+            parent_run_id=parent,
+            invocation=mock.Mock(spec=GenAIInvocation),
+        )
+
+    # Mark grandparent and parent as ended (deferred)
+    invocation_manager.delete_invocation_state(grandparent_id)
+    invocation_manager.delete_invocation_state(parent_id)
+
+    assert grandparent_id in invocation_manager._invocations  # deferred
+    assert parent_id in invocation_manager._invocations  # deferred
+
+    # Removing the last live node should cascade upward
+    invocation_manager.delete_invocation_state(child_id)
+
+    assert child_id not in invocation_manager._invocations
+    assert parent_id not in invocation_manager._invocations
+    assert grandparent_id not in invocation_manager._invocations
+
+
+def test_delete_invocation_state_with_multiple_children_defers_until_last(
+    invocation_manager,
+):
+    """Parent removal is deferred until all children are gone."""
     parent_id = uuid.uuid4()
     child1_id = uuid.uuid4()
     child2_id = uuid.uuid4()
@@ -113,32 +179,63 @@ def test_delete_invocation_state_with_children(invocation_manager):
     child1_invocation = mock.Mock(spec=GenAIInvocation)
     child2_invocation = mock.Mock(spec=GenAIInvocation)
 
-    # Add parent and children
+    invocation_manager.add_invocation_state(
+        run_id=parent_id, parent_run_id=None, invocation=parent_invocation
+    )
+    invocation_manager.add_invocation_state(
+        run_id=child1_id, parent_run_id=parent_id, invocation=child1_invocation
+    )
+    invocation_manager.add_invocation_state(
+        run_id=child2_id, parent_run_id=parent_id, invocation=child2_invocation
+    )
+
+    # Delete parent while both children live → deferred
+    invocation_manager.delete_invocation_state(parent_id)
+    assert parent_id in invocation_manager._invocations
+
+    # Remove first child → parent still deferred (child2 is live)
+    invocation_manager.delete_invocation_state(child1_id)
+    assert parent_id in invocation_manager._invocations
+
+    # Remove last child → parent is now cleaned up
+    invocation_manager.delete_invocation_state(child2_id)
+    assert parent_id not in invocation_manager._invocations
+
+
+def test_get_parent_run_id_returns_none_for_unknown(invocation_manager):
+    assert invocation_manager.get_parent_run_id(uuid.uuid4()) is None
+
+
+def test_get_parent_run_id_returns_registered_parent(invocation_manager):
+    parent_id = uuid.uuid4()
+    child_id = uuid.uuid4()
+
     invocation_manager.add_invocation_state(
         run_id=parent_id,
         parent_run_id=None,
-        invocation=parent_invocation,
+        invocation=mock.Mock(spec=GenAIInvocation),
     )
     invocation_manager.add_invocation_state(
-        run_id=child1_id,
+        run_id=child_id,
         parent_run_id=parent_id,
-        invocation=child1_invocation,
+        invocation=mock.Mock(spec=GenAIInvocation),
     )
+
+    assert invocation_manager.get_parent_run_id(child_id) == parent_id
+    assert invocation_manager.get_parent_run_id(parent_id) is None
+
+
+def test_none_invocation_can_be_stored_and_retrieved(invocation_manager):
+    """Nodes with no associated span (None invocation) must still be tracked."""
+    run_id = uuid.uuid4()
+
     invocation_manager.add_invocation_state(
-        run_id=child2_id,
-        parent_run_id=parent_id,
-        invocation=child2_invocation,
+        run_id=run_id, parent_run_id=None, invocation=None
     )
 
-    # Verify initial state
-    assert len(invocation_manager._invocations) == 3
-    assert len(invocation_manager._invocations[parent_id].children) == 2
+    assert run_id in invocation_manager._invocations
+    assert invocation_manager.get_invocation(run_id) is None
 
-    # Delete parent
-    invocation_manager.delete_invocation_state(parent_id)
 
-    # Verify parent and all children were removed
-    assert parent_id not in invocation_manager._invocations
-    assert child1_id not in invocation_manager._invocations
-    assert child2_id not in invocation_manager._invocations
-    assert len(invocation_manager._invocations) == 0
+def test_delete_nonexistent_run_id_does_not_raise(invocation_manager):
+    invocation_manager.delete_invocation_state(uuid.uuid4())  # must not raise

@@ -13,11 +13,23 @@ from langchain_core.outputs import LLMResult
 from opentelemetry.instrumentation.langchain.invocation_manager import (
     _InvocationManager,
 )
+from opentelemetry.instrumentation.langchain.operation_mapping import (
+    OperationName,
+    classify_chain_run,
+    resolve_agent_name,
+)
+from opentelemetry.instrumentation.langchain.utils import (
+    make_input_message,
+    make_last_output_message,
+)
 from opentelemetry.util.genai.handler import TelemetryHandler
+from opentelemetry.util.genai.invocation import (
+    AgentInvocation,
+    InferenceInvocation,
+    WorkflowInvocation,
+)
 from opentelemetry.util.genai.types import (
-    Error,
     InputMessage,
-    LLMInvocation,  # TODO: migrate to InferenceInvocation
     MessagePart,
     OutputMessage,
     Text,
@@ -33,6 +45,139 @@ class OpenTelemetryLangChainCallbackHandler(BaseCallbackHandler):
         super().__init__()
         self._telemetry_handler = telemetry_handler
         self._invocation_manager = _InvocationManager()
+
+    def on_chain_start(
+        self,
+        serialized: dict[str, Any],
+        inputs: dict[str, Any],
+        *,
+        run_id: UUID,
+        parent_run_id: Optional[UUID] = None,
+        tags: Optional[list[str]] = None,
+        metadata: Optional[dict[str, Any]] = None,
+        **kwargs: Any,
+    ) -> Any:
+        operation = classify_chain_run(
+            serialized, metadata, kwargs, parent_run_id
+        )
+
+        if operation == OperationName.INVOKE_WORKFLOW:
+            workflow_name = kwargs.get("name") or serialized.get("name")
+            workflow_name_override = (
+                metadata.get("workflow_name") if metadata else None
+            )
+            workflow = self._telemetry_handler.workflow(
+                name=workflow_name_override or workflow_name
+            )
+            workflow.input_messages = make_input_message(inputs)
+            self._invocation_manager.add_invocation_state(
+                run_id, parent_run_id, workflow
+            )
+        elif operation == OperationName.INVOKE_AGENT:
+            # agent name passed by the user
+            suggested_agent_name = resolve_agent_name(
+                serialized, metadata, kwargs
+            )
+            # find if there is an agent already
+            agent_invocation = self._find_nearest_agent(parent_run_id)
+            agent_invocation_name = (
+                agent_invocation.agent_name if agent_invocation else None
+            )
+            if suggested_agent_name:
+                suggested_agent_name_lower = suggested_agent_name.lower()
+                agent_invocation_name_lower = (
+                    agent_invocation_name.lower()
+                    if agent_invocation_name
+                    else None
+                )
+                if suggested_agent_name_lower != agent_invocation_name_lower:
+                    agent = self._telemetry_handler.invoke_local_agent(
+                        provider=metadata.get("ls_provider", "unknown")
+                        if metadata
+                        else "unknown",
+                        agent_name=suggested_agent_name,
+                    )
+                    agent.input_messages = make_input_message(inputs)
+
+                    if metadata:
+                        agent.agent_id = metadata.get("agent_id")
+                        agent.agent_description = metadata.get(
+                            "agent_description"
+                        )
+
+                        for key in (
+                            "thread_id",
+                            "session_id",
+                            "conversation_id",
+                        ):
+                            conv_id = metadata.get(key)
+                            if conv_id:
+                                agent.conversation_id = conv_id
+                                break
+
+                    self._invocation_manager.add_invocation_state(
+                        run_id, parent_run_id, agent
+                    )
+                else:
+                    # We create invoke_agent span for the initial chain for agent. All follow-up chains invoked for agent invocation will not create agent span.
+                    self._invocation_manager.add_invocation_state(
+                        run_id, parent_run_id, None
+                    )
+            else:
+                # No agent name could be resolved; still register the run_id so that
+                # parent-child traversal (e.g. _find_nearest_agent) is not broken for
+                # any children of this node.
+                self._invocation_manager.add_invocation_state(
+                    run_id, parent_run_id, None
+                )
+        else:
+            # For unclassified chains, we still want to track them in the invocation manager to maintain the parent-child relationships, even though we won't create spans for them.
+            self._invocation_manager.add_invocation_state(
+                run_id, parent_run_id, None
+            )
+
+    def on_chain_end(
+        self,
+        outputs: dict[str, Any],
+        *,
+        run_id: UUID,
+        parent_run_id: Optional[UUID] = None,
+        **kwargs: Any,
+    ) -> Any:
+        invocation = self._invocation_manager.get_invocation(run_id=run_id)
+        if invocation is None or not isinstance(
+            invocation, (WorkflowInvocation, AgentInvocation)
+        ):
+            # If the invocation does not exist, we cannot set attributes or end it
+            self._invocation_manager.delete_invocation_state(run_id)
+            return
+
+        invocation.output_messages = make_last_output_message(outputs)
+
+        invocation.stop()
+
+        if not invocation.span.is_recording():
+            self._invocation_manager.delete_invocation_state(run_id)
+
+    def on_chain_error(
+        self,
+        error: BaseException,
+        *,
+        run_id: UUID,
+        parent_run_id: Optional[UUID] = None,
+        **kwargs: Any,
+    ) -> Any:
+        invocation = self._invocation_manager.get_invocation(run_id=run_id)
+        if invocation is None or not isinstance(
+            invocation, (WorkflowInvocation, AgentInvocation)
+        ):
+            # If the invocation does not exist, we cannot set attributes or end it
+            self._invocation_manager.delete_invocation_state(run_id)
+            return
+
+        invocation.fail(error)
+        if not invocation.span.is_recording():
+            self._invocation_manager.delete_invocation_state(run_id=run_id)
 
     def on_chat_model_start(
         self,
@@ -129,25 +274,22 @@ class OpenTelemetryLangChainCallbackHandler(BaseCallbackHandler):
                     )
                 )
 
-        llm_invocation = LLMInvocation(
+        llm_invocation = self._telemetry_handler.inference(
+            provider,
             request_model=request_model,
-            input_messages=input_messages,
-            provider=provider,
-            top_p=top_p,
-            frequency_penalty=frequency_penalty,
-            presence_penalty=presence_penalty,
-            stop_sequences=stop_sequences,
-            seed=seed,
-            temperature=temperature,
-            max_tokens=max_tokens,
         )
-        llm_invocation = self._telemetry_handler.start_llm(
-            invocation=llm_invocation
-        )
+        llm_invocation.input_messages = input_messages
+        llm_invocation.top_p = top_p
+        llm_invocation.frequency_penalty = frequency_penalty
+        llm_invocation.presence_penalty = presence_penalty
+        llm_invocation.stop_sequences = stop_sequences
+        llm_invocation.seed = seed
+        llm_invocation.temperature = temperature
+        llm_invocation.max_tokens = max_tokens
         self._invocation_manager.add_invocation_state(
             run_id=run_id,
             parent_run_id=parent_run_id,
-            invocation=llm_invocation,  # pyright: ignore[reportArgumentType]
+            invocation=llm_invocation,
         )
 
     def on_llm_end(
@@ -161,7 +303,7 @@ class OpenTelemetryLangChainCallbackHandler(BaseCallbackHandler):
         llm_invocation = self._invocation_manager.get_invocation(run_id=run_id)
         if llm_invocation is None or not isinstance(
             llm_invocation,
-            LLMInvocation,
+            InferenceInvocation,
         ):
             # If the invocation does not exist, we cannot set attributes or end it
             return
@@ -236,10 +378,8 @@ class OpenTelemetryLangChainCallbackHandler(BaseCallbackHandler):
             if response_id is not None:
                 llm_invocation.response_id = str(response_id)
 
-        llm_invocation = self._telemetry_handler.stop_llm(
-            invocation=llm_invocation
-        )
-        if llm_invocation.span and not llm_invocation.span.is_recording():
+        llm_invocation.stop()
+        if not llm_invocation.span.is_recording():
             self._invocation_manager.delete_invocation_state(run_id=run_id)
 
     def on_llm_error(
@@ -253,14 +393,24 @@ class OpenTelemetryLangChainCallbackHandler(BaseCallbackHandler):
         llm_invocation = self._invocation_manager.get_invocation(run_id=run_id)
         if llm_invocation is None or not isinstance(
             llm_invocation,
-            LLMInvocation,
+            InferenceInvocation,
         ):
             # If the invocation does not exist, we cannot set attributes or end it
             return
 
-        error_otel = Error(message=str(error), type=type(error))
-        llm_invocation = self._telemetry_handler.fail_llm(
-            invocation=llm_invocation, error=error_otel
-        )
-        if llm_invocation.span and not llm_invocation.span.is_recording():
+        llm_invocation.fail(error)
+        if not llm_invocation.span.is_recording():
             self._invocation_manager.delete_invocation_state(run_id=run_id)
+
+    def _find_nearest_agent(
+        self, run_id: Optional[UUID]
+    ) -> Optional[AgentInvocation]:
+        current = run_id
+        visited: set[UUID] = set()
+        while current is not None and current not in visited:
+            visited.add(current)
+            entity = self._invocation_manager.get_invocation(current)
+            if isinstance(entity, AgentInvocation):
+                return entity
+            current = self._invocation_manager.get_parent_run_id(current)
+        return None
