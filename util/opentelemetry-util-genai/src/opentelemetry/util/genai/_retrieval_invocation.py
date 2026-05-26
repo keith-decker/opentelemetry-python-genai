@@ -3,7 +3,8 @@
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Mapping, Sequence
+from typing import Any, cast
 
 from opentelemetry._logs import Logger
 from opentelemetry.semconv._incubating.attributes import (
@@ -20,6 +21,7 @@ from opentelemetry.util.genai.utils import (
     get_content_capturing_mode,
     is_experimental_mode,
 )
+from opentelemetry.util.types import AttributeValue
 
 
 class RetrievalInvocation(GenAIInvocation):
@@ -75,12 +77,12 @@ class RetrievalInvocation(GenAIInvocation):
         self.server_port = server_port
         self.top_k: float | None = None
         self.query_text: str | None = None
-        self.documents: Any = None
+        self.documents: Sequence[Mapping[str, Any]] | None = None
         self._start(self._get_base_attributes())
 
-    def _get_base_attributes(self) -> dict[str, Any]:
+    def _get_base_attributes(self) -> dict[str, AttributeValue]:
         """Return sampling-relevant attributes available at span creation time."""
-        optional_attrs = (
+        optional_attrs: tuple[tuple[str, AttributeValue | None], ...] = (
             (GenAI.GEN_AI_DATA_SOURCE_ID, self.data_source_id),
             (GenAI.GEN_AI_PROVIDER_NAME, self.provider),
             (GenAI.GEN_AI_REQUEST_MODEL, self.request_model),
@@ -92,22 +94,23 @@ class RetrievalInvocation(GenAIInvocation):
             **{k: v for k, v in optional_attrs if v is not None},
         }
 
-    def _get_metric_attributes(self) -> dict[str, Any]:
+    def _get_metric_attributes(self) -> dict[str, AttributeValue]:
         # data_source_id intentionally excluded — high cardinality
-        optional_attrs = (
+        optional_attrs: tuple[tuple[str, AttributeValue | None], ...] = (
             (GenAI.GEN_AI_PROVIDER_NAME, self.provider),
             (GenAI.GEN_AI_REQUEST_MODEL, self.request_model),
             (server_attributes.SERVER_ADDRESS, self.server_address),
             (server_attributes.SERVER_PORT, self.server_port),
         )
-        attrs: dict[str, Any] = {
+        attrs: dict[str, AttributeValue] = {
             GenAI.GEN_AI_OPERATION_NAME: self._operation_name,
             **{k: v for k, v in optional_attrs if v is not None},
         }
-        attrs.update(self.metric_attributes)
+        # TODO: remove cast once base class metric_attributes is typed as dict[str, AttributeValue]
+        attrs.update(cast(dict[str, AttributeValue], self.metric_attributes))
         return attrs
 
-    def _get_content_attributes_for_span(self) -> dict[str, Any]:
+    def _get_content_attributes_for_span(self) -> dict[str, AttributeValue]:
         if not self.span.is_recording():
             return {}
         if not is_experimental_mode() or get_content_capturing_mode() not in (
@@ -115,7 +118,7 @@ class RetrievalInvocation(GenAIInvocation):
             ContentCapturingMode.SPAN_AND_EVENT,
         ):
             return {}
-        optional_attrs = (
+        optional_attrs: tuple[tuple[str, AttributeValue | None], ...] = (
             (GenAI.GEN_AI_RETRIEVAL_QUERY_TEXT, self.query_text),
             (
                 GenAI.GEN_AI_RETRIEVAL_DOCUMENTS,
@@ -129,10 +132,11 @@ class RetrievalInvocation(GenAIInvocation):
     def _apply_finish(self, error: Error | None = None) -> None:
         if error is not None:
             self._apply_error_attributes(error)
-        attributes: dict[str, Any] = {}
+        attributes: dict[str, AttributeValue] = {}
         if self.top_k is not None:
             attributes[GenAI.GEN_AI_REQUEST_TOP_K] = self.top_k
         attributes.update(self._get_content_attributes_for_span())
-        attributes.update(self.attributes)
+        # TODO: remove cast once base class self.attributes is typed as dict[str, AttributeValue]
+        attributes.update(cast(dict[str, AttributeValue], self.attributes))
         self.span.set_attributes(attributes)
         self._metrics_recorder.record(self)
