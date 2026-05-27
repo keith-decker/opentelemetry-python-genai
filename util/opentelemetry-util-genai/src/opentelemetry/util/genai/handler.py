@@ -146,7 +146,7 @@ class TelemetryHandler:
     ) -> InferenceInvocation:
         """Create and start an LLM inference invocation.
 
-        .. deprecated:: 0.5b0
+        .. deprecated:: 1.0b0
             Use ``handler.inference()`` instead.
 
         Set remaining attributes (input_messages, temperature, etc.) on the
@@ -188,7 +188,7 @@ class TelemetryHandler:
     ) -> EmbeddingInvocation:
         """Create and start an Embedding invocation.
 
-        .. deprecated:: 0.5b0
+        .. deprecated:: 1.0b0
             Use ``handler.embedding()`` instead.
 
         Set remaining attributes (encoding_formats, etc.) on the returned
@@ -245,7 +245,7 @@ class TelemetryHandler:
     ) -> ToolInvocation:
         """Create and start a tool invocation.
 
-        .. deprecated:: 0.5b0
+        .. deprecated:: 1.0b0
             Use ``handler.tool()`` instead.
 
         Set tool_result on the returned invocation when done, then call
@@ -270,7 +270,7 @@ class TelemetryHandler:
     ) -> WorkflowInvocation:
         """Create and start a workflow invocation.
 
-        .. deprecated:: 0.5b0
+        .. deprecated:: 1.0b0
             Use ``handler.workflow()`` instead.
 
         Set remaining attributes on the returned invocation, then call
@@ -404,7 +404,7 @@ class TelemetryHandler:
     ) -> AgentInvocation:
         """Create and start a local agent invocation (INTERNAL span kind).
 
-        .. deprecated:: 0.5b0
+        .. deprecated:: 1.0b0
             Use ``handler.invoke_local_agent()`` instead.
 
         Use for agents running within the same process (e.g. LangChain, CrewAI).
@@ -434,7 +434,7 @@ class TelemetryHandler:
     ) -> AgentInvocation:
         """Create and start a remote agent invocation (CLIENT span kind).
 
-        .. deprecated:: 0.5b0
+        .. deprecated:: 1.0b0
             Use ``handler.invoke_remote_agent()`` instead.
 
         Use for agents invoked over a remote service (e.g. OpenAI Assistants, AWS Bedrock).
