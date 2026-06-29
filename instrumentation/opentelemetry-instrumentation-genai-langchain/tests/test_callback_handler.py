@@ -9,6 +9,7 @@ the callback-handler logic and the invocation-manager bookkeeping.
 """
 
 import uuid
+from types import SimpleNamespace
 from unittest import mock
 
 from langchain_core.messages import AIMessage, HumanMessage
@@ -19,6 +20,7 @@ from opentelemetry.instrumentation.genai.langchain.callback_handler import (
 )
 from opentelemetry.instrumentation.genai.langchain.utils import (
     make_input_message,
+    make_input_messages_from_messages,
     make_last_output_message,
     make_output_message,
     serialize,
@@ -26,6 +28,7 @@ from opentelemetry.instrumentation.genai.langchain.utils import (
 from opentelemetry.util.genai.invocation import (
     AgentInvocation,
     InferenceInvocation,
+    RetrievalInvocation,
     WorkflowInvocation,
 )
 from opentelemetry.util.genai.types import (
@@ -33,6 +36,8 @@ from opentelemetry.util.genai.types import (
     OutputMessage,
     Text,
     ToolCallRequest,
+    ToolCallResponse,
+    Uri,
 )
 
 # ---------------------------------------------------------------------------
@@ -78,6 +83,16 @@ def _make_handler():
     telemetry.invoke_local_agent.side_effect = (
         _make_invoke_local_agent_side_effect(agent_inv)
     )
+
+    inference_inv = mock.MagicMock(spec=InferenceInvocation)
+    inference_inv.span = mock.MagicMock()
+    inference_inv.span.is_recording.return_value = False
+    telemetry.inference.return_value = inference_inv
+
+    retrieval_inv = mock.MagicMock(spec=RetrievalInvocation)
+    retrieval_inv.span = mock.MagicMock()
+    retrieval_inv.span.is_recording.return_value = False
+    telemetry.retrieval.return_value = retrieval_inv
 
     handler = OpenTelemetryLangChainCallbackHandler(telemetry)
     return handler, telemetry, workflow_inv, agent_inv
@@ -600,6 +615,143 @@ class TestFindNearestAgent:
 
 
 # ---------------------------------------------------------------------------
+# on_chat_model_start / provider parsing
+# ---------------------------------------------------------------------------
+
+
+class TestChatModelCallbacks:
+    def test_chat_model_start_supports_google_genai_provider(self):
+        handler, telemetry, _, _ = _make_handler()
+        run_id = _run_id()
+
+        handler.on_chat_model_start(
+            serialized={"name": "ChatGoogleGenerativeAI"},
+            messages=[[HumanMessage(content="Hello")]],
+            run_id=run_id,
+            metadata={
+                "ls_provider": "google_genai",
+                "ls_model_name": "gemini-2.5-pro",
+            },
+            invocation_params={"model": "gemini-2.5-pro"},
+        )
+
+        telemetry.inference.assert_called_once_with(
+            "gcp.gen_ai",
+            request_model="gemini-2.5-pro",
+        )
+        assigned = telemetry.inference.return_value.input_messages
+        assert len(assigned) == 1
+        assert assigned[0].role == "human"
+        assert assigned[0].parts[0].content == "Hello"
+
+    def test_llm_end_extracts_usage_details(self):
+        handler, telemetry, _, _ = _make_handler()
+        run_id = _run_id()
+        handler.on_chat_model_start(
+            serialized={"name": "ChatOpenAI"},
+            messages=[[HumanMessage(content="Weather?")]],
+            run_id=run_id,
+            metadata={"ls_provider": "openai", "ls_model_name": "gpt-4o"},
+        )
+
+        message = SimpleNamespace(
+            type="ai",
+            content="Done",
+            tool_calls=[],
+            additional_kwargs={},
+            response_metadata={},
+            usage_metadata=None,
+        )
+        generation = SimpleNamespace(
+            message=message, generation_info={"finish_reason": "stop"}
+        )
+        response = SimpleNamespace(
+            generations=[[generation]],
+            llm_output={
+                "model_name": "gpt-4o-2024-08-06",
+                "id": "resp_123",
+                "token_usage": {
+                    "prompt_tokens": 10,
+                    "completion_tokens": 4,
+                    "prompt_tokens_details": {"cached_tokens": 3},
+                    "completion_tokens_details": {"reasoning_tokens": 2},
+                },
+            },
+        )
+
+        handler.on_llm_end(response=response, run_id=run_id)
+
+        invocation = telemetry.inference.return_value
+        assert invocation.input_tokens == 10
+        assert invocation.output_tokens == 4
+        assert invocation.cache_read_input_tokens == 3
+        assert invocation.thinking_tokens == 2
+        assert invocation.response_model_name == "gpt-4o-2024-08-06"
+        assert invocation.response_id == "resp_123"
+        invocation.stop.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# on_retriever_*
+# ---------------------------------------------------------------------------
+
+
+class TestRetrieverCallbacks:
+    def test_retrieval_invocation_stopped_on_retriever_end(self):
+        handler, telemetry, _, _ = _make_handler()
+        run_id = _run_id()
+
+        document = mock.Mock()
+        document.id = None
+        document.page_content = "Paris is the capital of France."
+        document.metadata = {"source": "wiki"}
+
+        handler.on_retriever_start(
+            serialized={"name": "city_docs"},
+            query="capital of France",
+            run_id=run_id,
+            metadata={
+                "ls_provider": "openai",
+                "ls_model_name": "text-embedding-3-small",
+            },
+        )
+        handler.on_retriever_end(documents=[document], run_id=run_id)
+
+        telemetry.retrieval.assert_called_once_with(
+            data_source_id="city_docs",
+            provider="openai",
+            request_model="text-embedding-3-small",
+            server_address="api.openai.com",
+        )
+        retrieval = telemetry.retrieval.return_value
+        assert retrieval.query_text == "capital of France"
+        assert retrieval.documents == [
+            {
+                "id": "wiki",
+                "score": 1.0,
+                "content": "Paris is the capital of France.",
+                "metadata": {"source": "wiki"},
+            }
+        ]
+        retrieval.stop.assert_called_once()
+        assert run_id not in handler._invocation_manager._invocations
+
+    def test_retrieval_invocation_failed_on_retriever_error(self):
+        handler, telemetry, _, _ = _make_handler()
+        run_id = _run_id()
+        error = TimeoutError("timeout")
+
+        handler.on_retriever_start(
+            serialized={"name": "city_docs"},
+            query="capital of France",
+            run_id=run_id,
+        )
+        handler.on_retriever_error(error=error, run_id=run_id)
+
+        telemetry.retrieval.return_value.fail.assert_called_once_with(error)
+
+
+# ---------------------------------------------------------------------------
 # utils.make_input_message
 # ---------------------------------------------------------------------------
 
@@ -698,6 +850,84 @@ class TestMakeInputMessage:
         # messages key present but empty → return empty list (no fallback)
         result = make_input_message({"messages": [], "user_query": "ignored"})
         assert result == []
+
+    def test_raw_dict_message_role_and_content(self):
+        result = make_input_message(
+            {"messages": [{"role": "user", "content": "Hi"}]}
+        )
+
+        assert len(result) == 1
+        assert result[0].role == "user"
+        assert result[0].parts[0].content == "Hi"
+
+    def test_multi_part_image_message(self):
+        image_url = "data:image/jpeg;base64,abc123"
+        result = make_input_messages_from_messages(
+            [
+                HumanMessage(
+                    content=[
+                        {"type": "text", "text": "What is shown?"},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": image_url},
+                        },
+                    ]
+                )
+            ],
+            normalize_roles=True,
+        )
+
+        assert len(result) == 1
+        assert result[0].role == "user"
+        assert result[0].parts[0].content == "What is shown?"
+        image_part = result[0].parts[1]
+        assert isinstance(image_part, Uri)
+        assert image_part.modality == "image"
+        assert image_part.mime_type == "image/jpeg"
+        assert image_part.uri == image_url
+
+    def test_assistant_tool_call_message(self):
+        result = make_input_messages_from_messages(
+            [
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "name": "get_weather",
+                            "args": {"city": "San Francisco"},
+                            "id": "call_1",
+                        }
+                    ],
+                }
+            ],
+            normalize_roles=True,
+        )
+
+        assert len(result) == 1
+        tool_call = result[0].parts[0]
+        assert isinstance(tool_call, ToolCallRequest)
+        assert tool_call.id == "call_1"
+        assert tool_call.name == "get_weather"
+        assert tool_call.arguments == {"city": "San Francisco"}
+
+    def test_tool_response_message(self):
+        result = make_input_messages_from_messages(
+            [
+                {
+                    "role": "tool",
+                    "content": "Sunny",
+                    "tool_call_id": "call_1",
+                }
+            ],
+            normalize_roles=True,
+        )
+
+        assert len(result) == 1
+        tool_response = result[0].parts[0]
+        assert isinstance(tool_response, ToolCallResponse)
+        assert tool_response.id == "call_1"
+        assert tool_response.response == "Sunny"
 
 
 # ---------------------------------------------------------------------------

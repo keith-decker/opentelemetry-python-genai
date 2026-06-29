@@ -195,7 +195,21 @@ def test_gemini(span_exporter, start_instrumentation, gemini):
 
     # verify spans
     spans = span_exporter.get_finished_spans()
-    assert len(spans) == 0  # No spans should be created for gemini as of now
+    assert len(spans) == 1
+    span = spans[0]
+    assert span.name == "chat gemini-2.5-pro"
+    assert (
+        span.attributes[gen_ai_attributes.GEN_AI_OPERATION_NAME]
+        == gen_ai_attributes.GenAiOperationNameValues.CHAT.value
+    )
+    assert (
+        span.attributes[gen_ai_attributes.GEN_AI_REQUEST_MODEL]
+        == "gemini-2.5-pro"
+    )
+    assert (
+        span.attributes[gen_ai_attributes.GEN_AI_PROVIDER_NAME]
+        == gen_ai_attributes.GenAiProviderNameValues.GCP_GEN_AI.value
+    )
 
 
 def assert_openai_completion_attributes(
@@ -324,7 +338,10 @@ def assert_bedrock_completion_attributes(
         == "us.amazon.nova-lite-v1:0"
     )
 
-    assert span.attributes["gen_ai.provider.name"] == "amazon_bedrock"
+    assert (
+        span.attributes[gen_ai_attributes.GEN_AI_PROVIDER_NAME]
+        == gen_ai_attributes.GenAiProviderNameValues.AWS_BEDROCK.value
+    )
     assert span.attributes[gen_ai_attributes.GEN_AI_REQUEST_MAX_TOKENS] == 100
     assert span.attributes[gen_ai_attributes.GEN_AI_REQUEST_TEMPERATURE] == 0.1
 

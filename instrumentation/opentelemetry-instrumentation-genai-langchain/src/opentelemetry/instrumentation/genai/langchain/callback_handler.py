@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Optional, cast
+from collections.abc import Mapping, Sequence
+from typing import Any, Optional
+from urllib.parse import urlparse
 from uuid import UUID
 
 from langchain_core.callbacks import BaseCallbackHandler
@@ -21,23 +23,58 @@ from opentelemetry.instrumentation.genai.langchain.operation_mapping import (
 )
 from opentelemetry.instrumentation.genai.langchain.utils import (
     make_input_message,
+    make_input_messages_from_messages,
     make_last_output_message,
+    make_output_messages_from_generations,
+    make_retrieval_document,
     prepare_tool_definitions,
+)
+from opentelemetry.semconv._incubating.attributes import (
+    gen_ai_attributes as GenAI,
 )
 from opentelemetry.util.genai.handler import TelemetryHandler
 from opentelemetry.util.genai.invocation import (
     AgentInvocation,
     InferenceInvocation,
+    RetrievalInvocation,
     ToolInvocation,
     WorkflowInvocation,
 )
-from opentelemetry.util.genai.types import (
-    InputMessage,
-    MessagePart,
-    OutputMessage,
-    Text,
-    ToolCallRequest,
-)
+
+_PROVIDER_NAME_MAP = {
+    "amazon_bedrock": GenAI.GenAiProviderNameValues.AWS_BEDROCK.value,
+    "anthropic": GenAI.GenAiProviderNameValues.ANTHROPIC.value,
+    "azure": GenAI.GenAiProviderNameValues.AZURE_AI_OPENAI.value,
+    "azure_ai": GenAI.GenAiProviderNameValues.AZURE_AI_INFERENCE.value,
+    "azure_openai": GenAI.GenAiProviderNameValues.AZURE_AI_OPENAI.value,
+    "bedrock": GenAI.GenAiProviderNameValues.AWS_BEDROCK.value,
+    "bedrock_converse": GenAI.GenAiProviderNameValues.AWS_BEDROCK.value,
+    "cohere": GenAI.GenAiProviderNameValues.COHERE.value,
+    "deepseek": GenAI.GenAiProviderNameValues.DEEPSEEK.value,
+    "google": GenAI.GenAiProviderNameValues.GCP_GEN_AI.value,
+    "google_genai": GenAI.GenAiProviderNameValues.GCP_GEN_AI.value,
+    "google_vertexai": GenAI.GenAiProviderNameValues.GCP_VERTEX_AI.value,
+    "groq": GenAI.GenAiProviderNameValues.GROQ.value,
+    "mistralai": GenAI.GenAiProviderNameValues.MISTRAL_AI.value,
+    "openai": GenAI.GenAiProviderNameValues.OPENAI.value,
+    "perplexity": GenAI.GenAiProviderNameValues.PERPLEXITY.value,
+    "vertex": GenAI.GenAiProviderNameValues.GCP_VERTEX_AI.value,
+    "vertexai": GenAI.GenAiProviderNameValues.GCP_VERTEX_AI.value,
+    "xai": GenAI.GenAiProviderNameValues.X_AI.value,
+}
+
+_SERVER_ADDRESS_MAP = {
+    "amazon_bedrock": "bedrock-runtime.amazonaws.com",
+    "bedrock": "bedrock-runtime.amazonaws.com",
+    "bedrock_converse": "bedrock-runtime.amazonaws.com",
+    "cohere": "api.cohere.ai",
+    "google": "generativelanguage.googleapis.com",
+    "google_genai": "generativelanguage.googleapis.com",
+    "google_vertexai": "aiplatform.googleapis.com",
+    "openai": "api.openai.com",
+    "vertex": "aiplatform.googleapis.com",
+    "vertexai": "aiplatform.googleapis.com",
+}
 
 
 class OpenTelemetryLangChainCallbackHandler(BaseCallbackHandler):
@@ -191,31 +228,11 @@ class OpenTelemetryLangChainCallbackHandler(BaseCallbackHandler):
         metadata: Optional[dict[str, Any]] = None,
         **kwargs: Any,
     ) -> None:
-        # Other providers/LLMs may be supported in the future and telemetry for them is skipped for now.
-        if serialized.get("name") not in ("ChatOpenAI", "ChatBedrock"):
-            return
+        params = _get_invocation_params(kwargs)
 
-        if "invocation_params" in kwargs:
-            params = (
-                kwargs["invocation_params"].get("params")
-                or kwargs["invocation_params"]
-            )
-        else:
-            params = kwargs
+        request_model = _get_request_model(params, metadata)
 
-        request_model = "unknown"
-        for model_tag in (
-            "model_name",  # ChatOpenAI
-            "model_id",  # ChatBedrock
-        ):
-            if (model := (params or {}).get(model_tag)) is not None:
-                request_model = model
-                break
-            elif (model := (metadata or {}).get(model_tag)) is not None:
-                request_model = model
-                break
-
-        # Skip telemetry for unsupported request models
+        # Skip telemetry when LangChain cannot provide a concrete model name.
         if request_model == "unknown":
             return
 
@@ -232,54 +249,31 @@ class OpenTelemetryLangChainCallbackHandler(BaseCallbackHandler):
             top_p = params.get("top_p")
             frequency_penalty = params.get("frequency_penalty")
             presence_penalty = params.get("presence_penalty")
-            stop_sequences = params.get("stop")
+            stop_sequences = params.get("stop") or params.get(
+                "stop_sequences"
+            )
             seed = params.get("seed")
             temperature = params.get("temperature")
-            max_tokens = params.get("max_completion_tokens")
+            max_tokens = params.get("max_completion_tokens") or params.get(
+                "max_tokens"
+            )
 
-        provider = "unknown"
+        provider = _get_provider_name(metadata)
+
         if metadata is not None:
-            provider = metadata.get("ls_provider", "unknown")
-
             # Override with ChatBedrock values if present
             if "ls_temperature" in metadata:
                 temperature = metadata.get("ls_temperature")
             if "ls_max_tokens" in metadata:
                 max_tokens = metadata.get("ls_max_tokens")
 
-        input_messages: list[InputMessage] = []
-        for sub_messages in messages:
-            for message in sub_messages:
-                # Cast to Any to avoid type checking issues with LangChain's complex content type
-                raw_content: Any = message.content
-                role = message.type
-                parts: list[Text] = []
-
-                if isinstance(raw_content, str):
-                    parts = [Text(content=raw_content, type="text")]
-                elif isinstance(raw_content, list):
-                    for item in raw_content:  # type: ignore[misc]
-                        if isinstance(item, str):
-                            parts.append(Text(content=item, type="text"))
-                        elif isinstance(item, dict):
-                            # Safely extract text content from dict
-                            text_value = item.get("text")  # type: ignore[misc]
-                            if isinstance(text_value, str) and text_value:
-                                parts.append(
-                                    Text(content=text_value, type="text")
-                                )
-
-                input_messages.append(
-                    InputMessage(
-                        parts=cast(list[MessagePart], parts), role=role
-                    )
-                )
-
         llm_invocation = self._telemetry_handler.inference(
             provider,
             request_model=request_model,
         )
-        llm_invocation.input_messages = input_messages
+        llm_invocation.input_messages = make_input_messages_from_messages(
+            messages
+        )
         llm_invocation.top_p = top_p
         llm_invocation.frequency_penalty = frequency_penalty
         llm_invocation.presence_penalty = presence_penalty
@@ -314,77 +308,12 @@ class OpenTelemetryLangChainCallbackHandler(BaseCallbackHandler):
             # If the invocation does not exist, we cannot set attributes or end it
             return
 
-        output_messages: list[OutputMessage] = []
-        for generation in getattr(response, "generations", []):
-            for chat_generation in generation:
-                # Get finish reason
-                finish_reason = "unknown"  # Default value
-                generation_info = getattr(
-                    chat_generation, "generation_info", None
-                )
-                if generation_info is not None:
-                    finish_reason = generation_info.get(
-                        "finish_reason", "unknown"
-                    )
-
-                if chat_generation.message:
-                    # Get finish reason if generation_info is None above
-                    if (
-                        generation_info is None
-                        and chat_generation.message.response_metadata
-                    ):
-                        finish_reason = (
-                            chat_generation.message.response_metadata.get(
-                                "stopReason", "unknown"
-                            )
-                        )
-
-                    if finish_reason in ("tool_calls", "tool_use"):
-                        tool_calls: list[ToolCallRequest] = []
-                        for tool_call in chat_generation.message.tool_calls:
-                            tool_call_request = ToolCallRequest(
-                                name=tool_call["name"],
-                                id=tool_call["id"],
-                                arguments=tool_call["args"],
-                            )
-                            tool_calls.append(tool_call_request)
-                        output_message = OutputMessage(
-                            role=chat_generation.message.type,
-                            parts=cast(list[MessagePart], tool_calls),
-                            finish_reason=finish_reason,
-                        )
-                    else:
-                        parts = [
-                            Text(
-                                content=chat_generation.message.content,
-                                type="text",
-                            )
-                        ]
-                        role = chat_generation.message.type
-                        output_message = OutputMessage(
-                            role=role,
-                            parts=cast(list[MessagePart], parts),
-                            finish_reason=finish_reason,
-                        )
-                    output_messages.append(output_message)
-
-                    # Get token usage if available
-                    if chat_generation.message.usage_metadata:
-                        input_tokens = (
-                            chat_generation.message.usage_metadata.get(
-                                "input_tokens", 0
-                            )
-                        )
-                        llm_invocation.input_tokens = input_tokens
-
-                        output_tokens = (
-                            chat_generation.message.usage_metadata.get(
-                                "output_tokens", 0
-                            )
-                        )
-                        llm_invocation.output_tokens = output_tokens
+        output_messages = make_output_messages_from_generations(
+            getattr(response, "generations", [])
+        )
 
         llm_invocation.output_messages = output_messages
+        _set_usage_tokens(llm_invocation, response)
 
         llm_output = getattr(response, "llm_output", None)
         if llm_output is not None:
@@ -488,6 +417,69 @@ class OpenTelemetryLangChainCallbackHandler(BaseCallbackHandler):
         if not tool_invocation.span.is_recording():
             self._invocation_manager.delete_invocation_state(run_id=run_id)
 
+    def on_retriever_start(
+        self,
+        serialized: dict[str, Any],
+        query: str,
+        *,
+        run_id: UUID,
+        parent_run_id: Optional[UUID] = None,
+        tags: Optional[list[str]] = None,
+        metadata: Optional[dict[str, Any]] = None,
+        **kwargs: Any,
+    ) -> None:
+        retrieval = self._telemetry_handler.retrieval(
+            data_source_id=_get_retriever_name(serialized, kwargs, metadata),
+            provider=_get_provider_name(metadata),
+            request_model=_get_request_model(None, metadata),
+            server_address=_get_server_address(metadata),
+        )
+        retrieval.query_text = query
+        self._invocation_manager.add_invocation_state(
+            run_id, parent_run_id, retrieval
+        )
+
+    def on_retriever_end(
+        self,
+        documents: Sequence[Any],
+        *,
+        run_id: UUID,
+        parent_run_id: Optional[UUID] = None,
+        **kwargs: Any,
+    ) -> None:
+        retrieval = self._invocation_manager.get_invocation(run_id)
+        if not isinstance(retrieval, RetrievalInvocation):
+            self._invocation_manager.delete_invocation_state(run_id)
+            return
+
+        retrieval.documents = [
+            document
+            for document in (
+                make_retrieval_document(document) for document in documents
+            )
+            if document
+        ]
+        retrieval.stop()
+        if not retrieval.span.is_recording():
+            self._invocation_manager.delete_invocation_state(run_id=run_id)
+
+    def on_retriever_error(
+        self,
+        error: BaseException,
+        *,
+        run_id: UUID,
+        parent_run_id: Optional[UUID] = None,
+        **kwargs: Any,
+    ) -> None:
+        retrieval = self._invocation_manager.get_invocation(run_id)
+        if not isinstance(retrieval, RetrievalInvocation):
+            self._invocation_manager.delete_invocation_state(run_id)
+            return
+
+        retrieval.fail(error)
+        if not retrieval.span.is_recording():
+            self._invocation_manager.delete_invocation_state(run_id=run_id)
+
     def _find_nearest_agent(
         self, run_id: Optional[UUID]
     ) -> Optional[AgentInvocation]:
@@ -500,3 +492,165 @@ class OpenTelemetryLangChainCallbackHandler(BaseCallbackHandler):
                 return entity
             current = self._invocation_manager.get_parent_run_id(current)
         return None
+
+
+def _get_invocation_params(kwargs: dict[str, Any]) -> Mapping[str, Any] | None:
+    invocation_params = kwargs.get("invocation_params")
+    if isinstance(invocation_params, Mapping):
+        params = invocation_params.get("params") or invocation_params
+        if isinstance(params, Mapping):
+            return params
+    return kwargs
+
+
+def _get_request_model(
+    params: Mapping[str, Any] | None,
+    metadata: Optional[dict[str, Any]],
+) -> str:
+    for source in (params, metadata):
+        if not source:
+            continue
+        for model_tag in (
+            "model_name",
+            "model",
+            "model_id",
+            "ls_model_name",
+        ):
+            if (model := source.get(model_tag)) is not None:
+                return str(model)
+    return "unknown"
+
+
+def _get_provider_name(metadata: Optional[dict[str, Any]]) -> str:
+    if not metadata:
+        return "unknown"
+    raw_provider = str(metadata.get("ls_provider", "unknown")).lower()
+    return _PROVIDER_NAME_MAP.get(raw_provider, raw_provider)
+
+
+def _get_server_address(metadata: Optional[dict[str, Any]]) -> str | None:
+    if not metadata:
+        return None
+
+    for key in ("ls_server_address", "server_address", "base_url", "endpoint"):
+        if (value := metadata.get(key)) is not None:
+            parsed = urlparse(str(value))
+            return parsed.hostname or str(value)
+
+    raw_provider = str(metadata.get("ls_provider", "")).lower()
+    return _SERVER_ADDRESS_MAP.get(raw_provider)
+
+
+def _set_usage_tokens(
+    invocation: InferenceInvocation, response: LLMResult
+) -> None:
+    usage = _find_usage_mapping(response)
+    if usage is None:
+        return
+
+    if (
+        input_tokens := _get_first_int(
+            usage,
+            ("prompt_tokens", "input_tokens", "prompt_token_count"),
+        )
+    ) is not None:
+        invocation.input_tokens = input_tokens
+    if (
+        output_tokens := _get_first_int(
+            usage,
+            (
+                "completion_tokens",
+                "output_tokens",
+                "candidates_token_count",
+            ),
+        )
+    ) is not None:
+        invocation.output_tokens = output_tokens
+
+    prompt_details = usage.get("prompt_tokens_details")
+    input_details = usage.get("input_token_details")
+    completion_details = usage.get("completion_tokens_details")
+    output_details = usage.get("output_token_details")
+
+    cache_creation = _first_not_none_int(
+        _get_first_int(usage, ("cache_creation_input_tokens",)),
+        _get_first_int(input_details, ("cache_creation",)),
+    )
+    if cache_creation is not None:
+        invocation.cache_creation_input_tokens = cache_creation
+    cache_read = _first_not_none_int(
+        _get_first_int(usage, ("cache_read_input_tokens",)),
+        _get_first_int(prompt_details, ("cached_tokens",)),
+        _get_first_int(input_details, ("cache_read",)),
+    )
+    if cache_read is not None:
+        invocation.cache_read_input_tokens = cache_read
+    thinking = _first_not_none_int(
+        _get_first_int(completion_details, ("reasoning_tokens",)),
+        _get_first_int(output_details, ("reasoning",)),
+    )
+    if thinking is not None:
+        invocation.thinking_tokens = thinking
+
+
+def _find_usage_mapping(response: LLMResult) -> Mapping[str, Any] | None:
+    llm_output = getattr(response, "llm_output", None)
+    if isinstance(llm_output, Mapping):
+        for key in ("token_usage", "usage"):
+            if isinstance(usage := llm_output.get(key), Mapping):
+                return usage
+
+    for generation in getattr(response, "generations", []):
+        for chat_generation in generation:
+            message = getattr(chat_generation, "message", None)
+            usage_metadata = getattr(message, "usage_metadata", None)
+            if isinstance(usage_metadata, Mapping):
+                return usage_metadata
+
+            response_metadata = getattr(message, "response_metadata", None)
+            if isinstance(response_metadata, Mapping):
+                for key in ("token_usage", "usage"):
+                    if isinstance(usage := response_metadata.get(key), Mapping):
+                        return usage
+
+            generation_info = getattr(chat_generation, "generation_info", None)
+            if isinstance(generation_info, Mapping):
+                usage = generation_info.get("usage_metadata")
+                if isinstance(usage, Mapping):
+                    return usage
+    return None
+
+
+def _get_first_int(
+    mapping: Mapping[str, Any] | None,
+    keys: tuple[str, ...],
+) -> int | None:
+    if not isinstance(mapping, Mapping):
+        return None
+    for key in keys:
+        value = mapping.get(key)
+        if isinstance(value, int):
+            return value
+    return None
+
+
+def _first_not_none_int(*values: int | None) -> int | None:
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
+
+def _get_retriever_name(
+    serialized: dict[str, Any],
+    kwargs: dict[str, Any],
+    metadata: Optional[dict[str, Any]],
+) -> str | None:
+    for source in (kwargs, metadata, serialized):
+        if source and (name := source.get("name")):
+            return str(name)
+    if (serialized_id := serialized.get("id")) and isinstance(
+        serialized_id, list
+    ):
+        return str(serialized_id[-1])
+    return None

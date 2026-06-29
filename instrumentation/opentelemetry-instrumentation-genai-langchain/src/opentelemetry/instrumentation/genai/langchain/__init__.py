@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Langchain instrumentation supporting `ChatOpenAI` and `ChatBedrock`, it can be enabled by
-using ``LangChainInstrumentor``. Other providers/LLMs may be supported in the future and telemetry for them is skipped for now.
+LangChain instrumentation for chat model, tool, retriever, workflow, and agent
+callbacks. It can be enabled by using ``LangChainInstrumentor``.
 
 Usage
 -----
